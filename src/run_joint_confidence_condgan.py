@@ -60,8 +60,8 @@ print(model)
 
 print('load GAN')
 nz = 100
-netG = models.Generator(1, nz, 64, 3) # ngpu, nz, ngf, nc
-netD = models.Discriminator(1, 3, 64) # ngpu, nc, ndf
+netCG = models.cGenerator(1, nz, 64, 3) # ngpu, nz, ngf, nc
+netCD = models.cDiscriminator(1, 3, 64) # ngpu, nc, ndf
 # Initial setup for GAN
 real_label = 1
 fake_label = 0
@@ -70,16 +70,16 @@ fixed_noise = torch.FloatTensor(64, nz, 1, 1).normal_(0, 1)
 
 if args.cuda:
     model.cuda()
-    netD.cuda()
-    netG.cuda()
+    netCD.cuda()
+    netCG.cuda()
     criterion.cuda()
     fixed_noise = fixed_noise.cuda()
 fixed_noise = Variable(fixed_noise)
 
 print('Setup optimizer')
 optimizer = optim.Adam(model.parameters(), lr=args.lr, weight_decay=args.wd)
-optimizerD = optim.Adam(netD.parameters(), lr=args.lr, betas=(0.5, 0.999))
-optimizerG = optim.Adam(netG.parameters(), lr=args.lr, betas=(0.5, 0.999))
+optimizerD = optim.Adam(netCD.parameters(), lr=args.lr, betas=(0.5, 0.999))
+optimizerG = optim.Adam(netCG.parameters(), lr=args.lr, betas=(0.5, 0.999))
 decreasing_lr = list(map(int, args.decreasing_lr.split(',')))
 
 def train(epoch):
@@ -102,7 +102,7 @@ def train(epoch):
         gan_target.fill_(real_label)
         targetv = Variable(gan_target)
         optimizerD.zero_grad()
-        output = netD(data,y_labels)#!!!y
+        output = netCD(data, y_labels)#!!!y
         errD_real = criterion(output, targetv)
         errD_real.backward()
         D_x = output.data.mean()
@@ -112,9 +112,9 @@ def train(epoch):
         if args.cuda:
             noise = noise.cuda()
         noise = Variable(noise)
-        fake = netG(noise)
+        fake = netCG(noise, y_labels) #maybe random labels?!
         targetv = Variable(gan_target.fill_(fake_label))
-        output = netD(fake.detach())
+        output = netCD(fake.detach(),y_labels)
         errD_fake = criterion(output, targetv)
         errD_fake.backward()
         D_G_z1 = output.data.mean()
@@ -126,8 +126,8 @@ def train(epoch):
         ###########################
         optimizerG.zero_grad()
         # Original GAN loss
-        targetv = Variable(gan_target.fill_(real_label))  
-        output = netD(fake)
+        targetv = Variable(gan_target.fill_(real_label))
+        output = netCD(fake, y_labels)
         errG = criterion(output, targetv)
         D_G_z2 = output.data.mean()
 
@@ -157,7 +157,7 @@ def train(epoch):
         if args.cuda:
             noise = noise.cuda()
         noise = Variable(noise)
-        fake = netG(noise)
+        fake = netCG(noise)
         KL_fake_output = F.log_softmax(model(fake))
         KL_loss_fake = F.kl_div(KL_fake_output, uniform_dist)*args.num_classes
         total_loss = loss + args.beta*KL_loss_fake
@@ -168,7 +168,7 @@ def train(epoch):
             print('Classification Train Epoch: {} [{}/{} ({:.0f}%)]\tLoss: {:.6f}, KL fake Loss: {:.6f}'.format(
                 epoch, batch_idx * len(data), len(train_loader.dataset),
                 100. * batch_idx / len(train_loader), loss.data.item(), KL_loss_fake.data.item()))
-            fake = netG(fixed_noise)
+            fake = netCG(fixed_noise)
             vutils.save_image(fake.data, '%s/gan_samples_epoch_%03d.png'%(args.outf, epoch), normalize=True)
 
 def test(epoch):
@@ -210,6 +210,6 @@ for epoch in range(1, args.epochs + 1):
         optimizer.param_groups[0]['lr'] *= args.droprate
     if epoch % 20 == 0:
         # do checkpointing
-        torch.save(netG.state_dict(), '%s/netG_epoch_%d.pth' % (args.outf, epoch))
-        torch.save(netD.state_dict(), '%s/netD_epoch_%d.pth' % (args.outf, epoch))
+        torch.save(netCG.state_dict(), '%s/netG_epoch_%d.pth' % (args.outf, epoch))
+        torch.save(netCD.state_dict(), '%s/netD_epoch_%d.pth' % (args.outf, epoch))
         torch.save(model.state_dict(), '%s/model_epoch_%d.pth' % (args.outf, epoch))
