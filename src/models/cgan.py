@@ -16,32 +16,65 @@ def cweights_init(m):
         m.weight.data.normal_(1.0, 0.02)
         m.bias.data.fill_(0)
 
+class Print(nn.Module):
+    def __init__(self,s=''):
+        super(Print, self).__init__()
+        self.msg = s
+    def forward(self, x):
+        print(x.shape, self.msg)
+        return x
+
 class _netCD(nn.Module):
     def __init__(self, ngpu, nc, ndf):
         super(_netCD, self).__init__()
         self.ngpu = ngpu
+        self.conv1_1 = nn.Conv2d(nc, 64, 4, 2, 1, bias=False)
+        self.conv1_2 = nn.Conv2d(10, 64, 4, 2, 1)
         self.main = nn.Sequential(
             # input size. (nc) x 32 x 32
-            nn.Conv2d(nc, ndf * 2, 4, 2, 1, bias=False),
+            Print(),
+            nn.Conv2d(64*2, 64*4, 4, 2, 1, bias=False),
+            Print(),
             nn.LeakyReLU(0.2, inplace=True),
             # state size. (ndf*2) x 16 x 16
-            nn.Conv2d(ndf * 2, ndf * 4, 4, 2, 1, bias=False),
-            nn.BatchNorm2d(ndf * 4),
+            Print(),
+            nn.Conv2d(64*4, 64*8, 4, 2, 1, bias=False),
+            Print(),
+
+            nn.BatchNorm2d(64*8),
+            Print(),
+
             nn.LeakyReLU(0.2, inplace=True),
             # state size. (ndf*4) x 8 x 8
-            nn.Conv2d(ndf * 4, ndf * 8, 4, 2, 1, bias=False),
-            nn.BatchNorm2d(ndf * 8),
+            Print(),
+
+            nn.Conv2d(64*8, 64 * 16, 4, 2, 1, bias=False),
+            Print(),
+
+            nn.BatchNorm2d(64 * 16),
+            Print(),
+
             nn.LeakyReLU(0.2, inplace=True),
             # state size. (ndf*8) x 4 x 4
-            nn.Conv2d(ndf * 8, 1, 4, 1, 0, bias=False),
-            nn.Sigmoid()
+            Print("LR"),
+
+            nn.Conv2d(64 * 16, 1, 2, 1, 0, bias=False),
+            Print("2d"),
+
+            nn.Sigmoid(),
+            Print("sigmoids")
+
         )
 
     def forward(self, input, labels):
+
         if isinstance(input.data, torch.cuda.FloatTensor) and self.ngpu > 1:
             output = nn.parallel.data_parallel(self.main, input, range(self.ngpu))
         else:
-            output = self.main(torch.cat((input,input)))
+            x = F.leaky_relu(self.conv1_1(input), 0.2)
+            y = F.leaky_relu(self.conv1_2(labels), 0.2)
+            x = torch.cat([x,y],1)
+            output = self.main(x)
 
         return output.view(-1, 1)
 

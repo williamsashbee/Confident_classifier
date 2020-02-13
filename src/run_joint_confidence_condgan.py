@@ -82,6 +82,19 @@ optimizerD = optim.Adam(netCD.parameters(), lr=args.lr, betas=(0.5, 0.999))
 optimizerG = optim.Adam(netCG.parameters(), lr=args.lr, betas=(0.5, 0.999))
 decreasing_lr = list(map(int, args.decreasing_lr.split(',')))
 
+onehot = torch.zeros(10, 10)
+onehot = onehot.scatter_(1, torch.LongTensor([0, 1, 2, 3, 4, 5, 6, 7, 8, 9]).view(10,1), 1).view(10, 10, 1, 1)
+img_size = 32
+fill = torch.zeros([10, 10, img_size, img_size])
+for i in range(10):
+    fill[i, i, :, :] = 1
+
+import os
+os.environ["CUDA_DEVICE_ORDER"]="PCI_BUS_ID"   # see issue #152
+os.environ["CUDA_VISIBLE_DEVICES"]="7"
+os.environ["CUDA_LAUNCH_BLOCKING"]="1"
+
+
 def train(epoch):
     model.train()
     for batch_idx, (data, y_labels) in enumerate(train_loader):
@@ -102,7 +115,13 @@ def train(epoch):
         gan_target.fill_(real_label)
         targetv = Variable(gan_target)
         optimizerD.zero_grad()
-        output = netCD(data, y_labels)#!!!y
+        #y_ = (torch.rand(data.shape[0], 1) * 10).type(torch.LongTensor).squeeze()
+
+        #y_label_ = onehot[y_]
+        #y_label_ =  Variable(y_label_.cuda())
+        #ind = [x for x in y_labels]
+        y_fill_ = Variable(fill[y_labels.squeeze().tolist()].cuda())
+        output = netCD(data, y_fill_)#!!!seems to be working
         errD_real = criterion(output, targetv)
         errD_real.backward()
         D_x = output.data.mean()
