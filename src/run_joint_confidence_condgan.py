@@ -94,6 +94,9 @@ os.environ["CUDA_DEVICE_ORDER"]="PCI_BUS_ID"   # see issue #152
 os.environ["CUDA_VISIBLE_DEVICES"]="6"
 #os.environ["CUDA_LAUNCH_BLOCKING"]="1"
 
+# Binary Cross Entropy loss
+BCE_loss = nn.BCELoss()
+
 
 def train(epoch):
     model.train()
@@ -105,10 +108,9 @@ def train(epoch):
         uniform_dist = torch.Tensor(data.size(0), args.num_classes).fill_((1./args.num_classes))
 
         if args.cuda:
-            data, y_labels = data.cuda(), y_labels.cuda()
+            data, y_labels = data.cuda(), y_labels.type(torch.LongTensor).cuda()
             gan_target, uniform_dist = gan_target.cuda(), uniform_dist.cuda()
 
-        data, y_labels, uniform_dist = Variable(data), Variable(y_labels), Variable(uniform_dist)
 
         ###########################
         # (1) Update D network    #
@@ -124,9 +126,11 @@ def train(epoch):
         #ind = [x for x in y_labels]
         y_fill_ = Variable(fill[y_labels.squeeze().tolist()].cuda())
         output = netCD(data, y_fill_)#!!!seems to be working
-        errD_real = criterion(output, targetv)
-        errD_real.backward()
+        #errD_real = criterion(output, targetv)
+        #errD_real.backward()
         D_x = output.data.mean()
+        y_real_ = torch.ones(128).cuda()
+        D_real_loss = BCE_loss(output, y_real_)
 
         # train with fake
         #noise = torch.FloatTensor(data.size(0), nz, 1, 1).normal_(0, 1).cuda()
@@ -144,10 +148,17 @@ def train(epoch):
         fake = netCG(z_, y_label_) #maybe random labels?!
         targetv = Variable(gan_target.fill_(fake_label))
         output = netCD(fake.detach(),y_fill_)
-        errD_fake = criterion(output, targetv)
-        errD_fake.backward()
+        #errD_fake = criterion(output, targetv)
+        #errD_fake.backward()
+        y_fake_ = torch.zeros(128).cuda()
+        D_fake_loss = BCE_loss(output, y_fake_)
+
+
+
         D_G_z1 = output.data.mean()
-        errD = errD_real + errD_fake
+        #errD = errD_real + errD_fake
+        D_train_loss = D_real_loss + D_fake_loss
+        D_train_loss.backward()
         optimizerD.step()
 
         ###########################
@@ -157,13 +168,17 @@ def train(epoch):
         # Original GAN loss
         targetv = Variable(gan_target.fill_(real_label))
         output = netCD(fake, y_fill_)#double check this!
-        errG = criterion(output, targetv)
+        #errG = criterion(output, targetv)
+        G_train_loss = BCE_loss(output, y_real_)
+
+        #G_train_loss.backward()
+
         D_G_z2 = output.data.mean()
 
         # minimize the true distribution
-        KL_fake_output = F.log_softmax(model(fake))
-        errG_KL = F.kl_div(KL_fake_output, uniform_dist)*args.num_classes
-        generator_loss = errG + args.beta*errG_KL
+        #KL_fake_output = F.log_softmax(model(fake))
+        #errG_KL = F.kl_div(KL_fake_output, uniform_dist)*args.num_classes
+        generator_loss = G_train_loss #+ args.beta*errG_KL
         generator_loss.backward()
         optimizerG.step()
 
@@ -173,19 +188,13 @@ def train(epoch):
         # cross entropy loss
         optimizer.zero_grad()
         output = F.log_softmax(model(data))
-        y_labels = y_labels.type(torch.LongTensor)
-        if args.cuda:
-            output = output.cuda()
-            y_labels = y_labels.cuda()
-        output = Variable(output)
-        y_labels = Variable(y_labels)
-        y_labels = torch.squeeze(y_labels)
-        loss = F.nll_loss(output, y_labels)
+        loss = F.nll_loss(output.cuda(), y_labels.type(torch.LongTensor).squeeze().cuda())
         # KL divergence
 #        noise = torch.FloatTensor(data.size(0), nz, 1, 1).normal_(0, 1).cuda()
 #        if args.cuda:
 #            noise = noise.cuda()
 #        noise = Variable(noise)
+
         fake = netCG(z_, y_label_)##check this!
         KL_fake_output = F.log_softmax(model(fake))
         KL_loss_fake = F.kl_div(KL_fake_output, uniform_dist)*args.num_classes
