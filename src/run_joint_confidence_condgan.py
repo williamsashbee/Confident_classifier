@@ -66,8 +66,8 @@ netCD = models.cDiscriminator(1, 3, 64) # ngpu, nc, ndf
 real_label = 1
 fake_label = 0
 criterion = nn.BCELoss()
-fixed_noise = torch.FloatTensor(64, nz, 1, 1).normal_(0, 1)
-
+#fixed_noise = torch.FloatTensor(64, nz, 1, 1).normal_(0, 1)
+fixed_noise = torch.randn((128, 100)).view(-1, 100, 1, 1)
 if args.cuda:
     model.cuda()
     netCD.cuda()
@@ -91,14 +91,16 @@ for i in range(10):
 
 import os
 os.environ["CUDA_DEVICE_ORDER"]="PCI_BUS_ID"   # see issue #152
-os.environ["CUDA_VISIBLE_DEVICES"]="7"
-os.environ["CUDA_LAUNCH_BLOCKING"]="1"
+os.environ["CUDA_VISIBLE_DEVICES"]="6"
+#os.environ["CUDA_LAUNCH_BLOCKING"]="1"
 
 
 def train(epoch):
     model.train()
     for batch_idx, (data, y_labels) in enumerate(train_loader):
-
+        if data.shape[0] != 128:
+            print ("data.shape",data.shape)
+            break
         gan_target = torch.FloatTensor(y_labels.size()).fill_(0)
         uniform_dist = torch.Tensor(data.size(0), args.num_classes).fill_((1./args.num_classes))
 
@@ -127,13 +129,21 @@ def train(epoch):
         D_x = output.data.mean()
 
         # train with fake
-        noise = torch.FloatTensor(data.size(0), nz, 1, 1).normal_(0, 1).cuda()
-        if args.cuda:
-            noise = noise.cuda()
-        noise = Variable(noise)
-        fake = netCG(noise, y_labels) #maybe random labels?!
+        #noise = torch.FloatTensor(data.size(0), nz, 1, 1).normal_(0, 1).cuda()
+        z_ = torch.randn((128, 100)).view(-1, 100, 1, 1)
+        y_ = (torch.rand(128, 1) * 10).type(torch.LongTensor).squeeze()
+        y_label_ = onehot[y_]
+        y_fill_ = fill[y_]
+        z_, y_label_, y_fill_ = Variable(z_.cuda()), Variable(y_label_.cuda()), Variable(y_fill_.cuda())
+        #if args.cuda:
+        #    noise = noise.cuda()
+        #noise = Variable(noise)
+        #G_result = G(z_, y_label_)
+        #D_result = D(G_result, y_fill_).squeeze()
+
+        fake = netCG(z_, y_label_) #maybe random labels?!
         targetv = Variable(gan_target.fill_(fake_label))
-        output = netCD(fake.detach(),y_labels)
+        output = netCD(fake.detach(),y_fill_)
         errD_fake = criterion(output, targetv)
         errD_fake.backward()
         D_G_z1 = output.data.mean()
@@ -146,7 +156,7 @@ def train(epoch):
         optimizerG.zero_grad()
         # Original GAN loss
         targetv = Variable(gan_target.fill_(real_label))
-        output = netCD(fake, y_labels)
+        output = netCD(fake, y_fill_)#double check this!
         errG = criterion(output, targetv)
         D_G_z2 = output.data.mean()
 
@@ -172,11 +182,11 @@ def train(epoch):
         y_labels = torch.squeeze(y_labels)
         loss = F.nll_loss(output, y_labels)
         # KL divergence
-        noise = torch.FloatTensor(data.size(0), nz, 1, 1).normal_(0, 1).cuda()
-        if args.cuda:
-            noise = noise.cuda()
-        noise = Variable(noise)
-        fake = netCG(noise)
+#        noise = torch.FloatTensor(data.size(0), nz, 1, 1).normal_(0, 1).cuda()
+#        if args.cuda:
+#            noise = noise.cuda()
+#        noise = Variable(noise)
+        fake = netCG(z_, y_label_)##check this!
         KL_fake_output = F.log_softmax(model(fake))
         KL_loss_fake = F.kl_div(KL_fake_output, uniform_dist)*args.num_classes
         total_loss = loss + args.beta*KL_loss_fake
@@ -187,7 +197,7 @@ def train(epoch):
             print('Classification Train Epoch: {} [{}/{} ({:.0f}%)]\tLoss: {:.6f}, KL fake Loss: {:.6f}'.format(
                 epoch, batch_idx * len(data), len(train_loader.dataset),
                 100. * batch_idx / len(train_loader), loss.data.item(), KL_loss_fake.data.item()))
-            fake = netCG(fixed_noise)
+            fake = netCG(fixed_noise,y_label_)
             vutils.save_image(fake.data, '%s/gan_samples_epoch_%03d.png'%(args.outf, epoch), normalize=True)
 
 def test(epoch):

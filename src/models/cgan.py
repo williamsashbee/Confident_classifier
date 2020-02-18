@@ -32,37 +32,37 @@ class _netCD(nn.Module):
         self.conv1_2 = nn.Conv2d(10, 64, 4, 2, 1)
         self.main = nn.Sequential(
             # input size. (nc) x 32 x 32
-            Print(),
+     #       Print(),
             nn.Conv2d(64*2, 64*4, 4, 2, 1, bias=False),
-            Print(),
+    #        Print(),
             nn.LeakyReLU(0.2, inplace=True),
             # state size. (ndf*2) x 16 x 16
-            Print(),
+    #        Print(),
             nn.Conv2d(64*4, 64*8, 4, 2, 1, bias=False),
-            Print(),
+   #         Print(),
 
             nn.BatchNorm2d(64*8),
-            Print(),
+  #          Print(),
 
             nn.LeakyReLU(0.2, inplace=True),
             # state size. (ndf*4) x 8 x 8
-            Print(),
+ #           Print(),
 
             nn.Conv2d(64*8, 64 * 16, 4, 2, 1, bias=False),
-            Print(),
+ #           Print(),
 
             nn.BatchNorm2d(64 * 16),
-            Print(),
+ #           Print(),
 
             nn.LeakyReLU(0.2, inplace=True),
             # state size. (ndf*8) x 4 x 4
-            Print("LR"),
+#            Print("LR"),
 
             nn.Conv2d(64 * 16, 1, 2, 1, 0, bias=False),
-            Print("2d"),
+#            Print("2d"),
 
-            nn.Sigmoid(),
-            Print("sigmoids")
+            nn.Sigmoid()#,
+ #           Print("sigmoids")
 
         )
 
@@ -82,30 +82,51 @@ class _netCG(nn.Module):
     def __init__(self, ngpu, nz, ngf, nc):
         super(_netCG, self).__init__()
         self.ngpu = ngpu
+        self.deconv1_1 = nn.ConvTranspose2d(100, 128 * 2, 4, 1, 0)
+        self.deconv1_1_bn = nn.BatchNorm2d(128 * 2)
+        self.deconv1_2 = nn.ConvTranspose2d(10, 128 * 2, 4, 1, 0)
+        self.deconv1_2_bn = nn.BatchNorm2d(128 * 2)
+
         self.main = nn.Sequential(
             # input is Z, going into a convolution
-            nn.ConvTranspose2d(nz, ngf * 8, 4, 1, 0, bias=False),
-            nn.BatchNorm2d(ngf * 8),
+#            Print("generator"),
+
+            nn.ConvTranspose2d(512, ngf , 4, 2, 1, bias=False),
+
+            nn.BatchNorm2d(ngf ),
+
             nn.ReLU(True),
+            #Print('2d'),
+
             # state size. (ngf*8) x 4 x 4
-            nn.ConvTranspose2d(ngf * 8, ngf * 4, 4, 2, 1, bias=False),
-            nn.BatchNorm2d(ngf * 4),
+            nn.ConvTranspose2d(ngf , ngf/2 , 4, 2, 1, bias=False),
+            #Print(),
+
+            nn.BatchNorm2d(ngf /2),
             nn.ReLU(True),
+            #Print("relu"),
             # state size. (ngf*4) x 8 x 8
-            nn.ConvTranspose2d(ngf * 4, ngf * 2, 4, 2, 1, bias=False),
-            nn.BatchNorm2d(ngf * 2),
-            nn.ReLU(True),
+            nn.ConvTranspose2d(ngf /2, 3, 4, 2, 1, bias=False),
+            #Print("2d"),
+            #nn.BatchNorm2d(ngf * 2),
+            #nn.ReLU(True),
             # state size. (ngf*2) x 16 x 16
-            nn.ConvTranspose2d(ngf * 2, nc, 4, 2, 1, bias=False),
-            nn.Sigmoid()
+            #nn.ConvTranspose2d(ngf * 2, nc, 4, stride = 2, padding =  1, bias=False),
+
+            nn.Sigmoid()#,
+            #Print("sigmoid")
             # state size. (nc) x 32 x 32
         )
 
-    def forward(self, input,labels):
+    def forward(self, input,label):
         if isinstance(input.data, torch.cuda.FloatTensor) and self.ngpu > 1:
             output = nn.parallel.data_parallel(self.main, input, range(self.ngpu))
         else:
-            output = self.main(torch.cat((input,input)))
+            x = F.relu(self.deconv1_1_bn(self.deconv1_1(input)))
+            y = F.relu(self.deconv1_2_bn(self.deconv1_2(label)))
+            x = torch.cat([x, y], 1)
+
+            output = self.main(x)
         return output
 
 def cGenerator(n_gpu, nz, ngf, nc):
