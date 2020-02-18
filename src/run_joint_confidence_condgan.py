@@ -52,7 +52,7 @@ if args.cuda:
 kwargs = {'num_workers': 1, 'pin_memory': True} if args.cuda else {}
 
 print('load data: ',args.dataset)
-train_loader, test_loader = data_loader.getTargetDataSet(args.dataset, args.batch_size, args.imageSize, args.dataroot)#!!need to be able to classify by class label
+train_loader, test_loader = data_loader.getTargetDataSet(args.dataset, args.batch_size, args.imageSize, args.dataroot)
 
 print('Load model')
 model = models.vgg13()
@@ -198,7 +198,7 @@ def train(epoch):
                 epoch, batch_idx * len(data), len(train_loader.dataset),
                 100. * batch_idx / len(train_loader), loss.data.item(), KL_loss_fake.data.item()))
             fake = netCG(fixed_noise,y_label_)
-            vutils.save_image(fake.data, '%s/gan_samples_epoch_%03d.png'%(args.outf, epoch), normalize=True)
+            vutils.save_image(fake.data, '%s/cgan_samples_epoch_%03d.png'%(args.outf, epoch), normalize=True)
 
 def test(epoch):
     model.eval()
