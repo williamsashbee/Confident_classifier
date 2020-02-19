@@ -16,6 +16,10 @@ import models
 from torchvision import datasets, transforms
 from torch.autograd import Variable
 
+import os
+os.environ["CUDA_DEVICE_ORDER"]="PCI_BUS_ID"   # see issue #152
+os.environ["CUDA_VISIBLE_DEVICES"]="6"
+#os.environ["CUDA_LAUNCH_BLOCKING"]="1"
 
 # Training settings
 parser = argparse.ArgumentParser(description='Training code - joint confidence')
@@ -105,7 +109,7 @@ def train(epoch):
         output = netD(data)
         errD_real = criterion(output, targetv)
         errD_real.backward()
-        D_x = output.data.mean()
+        D_x = output.data.mean()#.55
 
         # train with fake
         noise = torch.FloatTensor(data.size(0), nz, 1, 1).normal_(0, 1).cuda()
@@ -118,7 +122,7 @@ def train(epoch):
         errD_fake = criterion(output, targetv)
         errD_fake.backward()
         D_G_z1 = output.data.mean()
-        errD = errD_real + errD_fake
+        errD = errD_real + errD_fake #1.6, .67, .93
         optimizerD.step()
 
         ###########################
@@ -134,7 +138,7 @@ def train(epoch):
         # minimize the true distribution
         KL_fake_output = F.log_softmax(model(fake))
         errG_KL = F.kl_div(KL_fake_output, uniform_dist)*args.num_classes
-        generator_loss = errG + args.beta*errG_KL
+        generator_loss = errG + args.beta*errG_KL # 12.0, .65, 0e-8
         generator_loss.backward()
         optimizerG.step()
 
@@ -144,7 +148,7 @@ def train(epoch):
         # cross entropy loss
         optimizer.zero_grad()
         output = F.log_softmax(model(data))
-        loss = F.nll_loss(output, target)
+        loss = F.nll_loss(output.cuda(), target.type(torch.cuda.LongTensor).reshape((target.shape[0],)))
 
         # KL divergence
         noise = torch.FloatTensor(data.size(0), nz, 1, 1).normal_(0, 1).cuda()
@@ -176,9 +180,9 @@ def test(epoch):
             data, target = data.cuda(), target.cuda()
         data, target = Variable(data, volatile=True), Variable(target)
         output = F.log_softmax(model(data))
-        test_loss += F.nll_loss(output, target).data.item()
+        test_loss += F.nll_loss(output, target.type(torch.cuda.LongTensor).reshape((target.shape[0],))).data.item()
         pred = output.data.max(1)[1] # get the index of the max log-probability
-        correct += pred.eq(target.data).cpu().sum()
+        correct += pred.eq(target.type(torch.cuda.LongTensor).reshape((target.shape[0],)).data).cpu().sum()
 
     test_loss = test_loss
     test_loss /= len(test_loader) # loss function already averages over batch size
