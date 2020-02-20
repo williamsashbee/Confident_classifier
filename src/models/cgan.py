@@ -27,19 +27,20 @@ class Print(nn.Module):
 
 
 def cGenerator(n_gpu, nz, ngf, nc):
-    model = _netCG()
-    model.apply(cweights_init)
+    model = generator()
+    #model.apply(cweights_init)
     return model
 
 def cDiscriminator(n_gpu, nc, ndf):
-    model = _netCD()
-    model.apply(cweights_init)
+    model = discriminator()
+    #model.apply(cweights_init)
     return model
 
-class _netCG(nn.Module):
+class generator(nn.Module):
     # initializers
     def __init__(self, d=128):
-        super(_netCG, self).__init__()
+        d = d*2
+        super(generator, self).__init__()
         self.deconv1_1 = nn.ConvTranspose2d(100, d*2, 4, 1, 0)
         self.deconv1_1_bn = nn.BatchNorm2d(d*2)
         self.deconv1_2 = nn.ConvTranspose2d(10, d*2, 4, 1, 0)
@@ -68,15 +69,11 @@ class _netCG(nn.Module):
 
         return x
 
-def normal_init(m, mean, std):
-    if isinstance(m, nn.ConvTranspose2d) or isinstance(m, nn.Conv2d):
-        m.weight.data.normal_(mean, std)
-        m.bias.data.zero_()
-
-class _netCD(nn.Module):
+class discriminator(nn.Module):
     # initializers
     def __init__(self, d=128):
-        super(_netCD, self).__init__()
+        d = d*2
+        super(discriminator, self).__init__()
         self.conv1_1 = nn.Conv2d(3, d/2, 4, 2, 1)
         self.conv1_2 = nn.Conv2d(10, d/2, 4, 2, 1)
         self.conv2 = nn.Conv2d(d, d*2, 4, 2, 1)
@@ -99,4 +96,9 @@ class _netCD(nn.Module):
         x = F.leaky_relu(self.conv3_bn(self.conv3(x)), 0.2)
         x = F.sigmoid(self.conv4(x))
 
-        return x.view(-1,1)
+        return x
+
+def normal_init(m, mean, std):
+    if isinstance(m, nn.ConvTranspose2d) or isinstance(m, nn.Conv2d):
+        m.weight.data.normal_(mean, std)
+        m.bias.data.zero_()
