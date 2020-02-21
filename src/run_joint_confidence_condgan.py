@@ -57,6 +57,16 @@ kwargs = {'num_workers': 1, 'pin_memory': True} if args.cuda else {}
 print('load data: ',args.dataset)
 train_loader, test_loader = data_loader.getTargetDataSet(args.dataset, args.batch_size, args.imageSize, args.dataroot)
 
+transform = transforms.Compose([
+        transforms.Scale(32),
+        transforms.ToTensor(),
+        transforms.Normalize(mean=(0.5, 0.5, 0.5), std=(0.5, 0.5, 0.5))
+])
+
+train_loader_mnist = torch.utils.data.DataLoader(
+    datasets.MNIST('data', train=True, download=True, transform=transform),
+    batch_size=128, shuffle=True)
+
 print('Load model')
 model = models.vgg13()
 print(model)
@@ -118,7 +128,7 @@ def train(epoch):
     #G_train_loss = 3
     trg = 0
     trd = 0
-    for batch_idx, (data, y_labels) in enumerate(train_loader):
+    for batch_idx, (data, y_labels) in enumerate(train_loader_mnist):
         if data.shape[0] != 128:
             print ("data.shape",data.shape)
             break
@@ -133,6 +143,11 @@ def train(epoch):
         y_real_, y_fake_ = Variable(y_real_.cuda()), Variable(y_fake_.cuda())
 
         y_fill_ = fill[y_.squeeze().tolist()]
+        #y_fill_ = fill[y_]
+
+        assert y_fill_[0, y_.squeeze().tolist()[0], :, :].sum() == 1024
+        assert y_fill_.sum() == 1024 * 128
+
         x_, y_fill_ = Variable(x_.cuda()), Variable(y_fill_.cuda())
 
         D_result = D(x_, y_fill_).squeeze()
@@ -142,6 +157,12 @@ def train(epoch):
         y_ = (torch.rand(mini_batch, 1) * 10).type(torch.LongTensor).squeeze()
         y_label_ = onehot[y_]
         y_fill_ = fill[y_]
+        assert y_label_[0,y_[0]] == 1
+        assert y_label_.shape == (128,10,1,1)
+
+        assert y_fill_[0,y_[0],:,:].sum() == 1024
+        assert y_fill_.sum() == 1024*128
+
         z_, y_label_, y_fill_ = Variable(z_.cuda()), Variable(y_label_.cuda()), Variable(y_fill_.cuda())
 
         G_result = G(z_, y_label_)
@@ -164,7 +185,14 @@ def train(epoch):
         y_ = (torch.rand(mini_batch, 1) * 10).type(torch.LongTensor).squeeze()
         y_label_ = onehot[y_]
         y_fill_ = fill[y_]
+
         z_, y_label_, y_fill_ = Variable(z_.cuda()), Variable(y_label_.cuda()), Variable(y_fill_.cuda())
+
+        assert y_label_[0, y_[0]] == 1
+        assert y_label_.shape == (128, 10, 1, 1)
+
+        assert y_fill_[0, y_[0], :, :].sum() == 1024
+        assert y_fill_.sum() == 1024 * 128
 
         G_result = G(z_, y_label_)
         D_result = D(G_result, y_fill_).squeeze()
@@ -182,7 +210,7 @@ def train(epoch):
              #   epoch, batch_idx * len(data), len(train_loader.dataset),
              #   100. * batch_idx / len(train_loader), loss.data.item(), KL_loss_fake.data.item()))
             fake = G(fixed_noise.cuda(), fixed_label.cuda())
-            vutils.save_image(fake.data, '%s/cgan_samples_epoch_%03d.png'%(args.outf, epoch), normalize=True)
+            vutils.save_image(fake.data, '%s/MNISTcDCgan_samples_epoch_%03d.png'%(args.outf, epoch), normalize=True)
 
 def test(epoch):
     model.eval()
