@@ -128,14 +128,11 @@ def train(epoch):
     #G_train_loss = 3
     trg = 0
     trd = 0
-    for batch_idx, (data, y_labels) in enumerate(train_loader_mnist):
-        if data.shape[0] != 128:
-            print ("data.shape",data.shape)
-            break
+    for batch_idx, (data, y_labels) in enumerate(train_loader):
         # train discriminator D
         D.zero_grad()
-        x_ = data
-        y_ = y_labels
+        x_ = torch.cat([data[(y_labels==0).squeeze()],data[(y_labels==1).squeeze()]],0)
+        y_ = torch.cat([y_labels[(y_labels==0).squeeze()],y_labels[(y_labels==1).squeeze()]],0)
         mini_batch = x_.size()[0]
 
         y_real_ = torch.ones(mini_batch)
@@ -146,7 +143,7 @@ def train(epoch):
         #y_fill_ = fill[y_]
 
         assert y_fill_[0, y_.squeeze().tolist()[0], :, :].sum() == 1024
-        assert y_fill_.sum() == 1024 * 128
+        assert y_fill_.sum() == 1024 * mini_batch
 
         x_, y_fill_ = Variable(x_.cuda()), Variable(y_fill_.cuda())
 
@@ -158,10 +155,10 @@ def train(epoch):
         y_label_ = onehot[y_]
         y_fill_ = fill[y_]
         assert y_label_[0,y_[0]] == 1
-        assert y_label_.shape == (128,10,1,1)
+        assert y_label_.shape == (mini_batch,10,1,1)
 
         assert y_fill_[0,y_[0],:,:].sum() == 1024
-        assert y_fill_.sum() == 1024*128
+        assert y_fill_.sum() == 1024*mini_batch
 
         z_, y_label_, y_fill_ = Variable(z_.cuda()), Variable(y_label_.cuda()), Variable(y_fill_.cuda())
 
@@ -172,9 +169,11 @@ def train(epoch):
         D_fake_score = D_result.data.mean()
 
         D_train_loss = D_real_loss + D_fake_loss
-
-        D_train_loss.backward()
-        D_optimizer.step()
+        trg+=1
+        if D_train_loss >.5:
+            trd+=1
+            D_train_loss.backward()
+            D_optimizer.step()
 
         #D_losses.append(D_train_loss.item())
 
@@ -189,10 +188,10 @@ def train(epoch):
         z_, y_label_, y_fill_ = Variable(z_.cuda()), Variable(y_label_.cuda()), Variable(y_fill_.cuda())
 
         assert y_label_[0, y_[0]] == 1
-        assert y_label_.shape == (128, 10, 1, 1)
+        assert y_label_.shape == (mini_batch, 10, 1, 1)
 
         assert y_fill_[0, y_[0], :, :].sum() == 1024
-        assert y_fill_.sum() == 1024 * 128
+        assert y_fill_.sum() == 1024 * mini_batch
 
         G_result = G(z_, y_label_)
         D_result = D(G_result, y_fill_).squeeze()
