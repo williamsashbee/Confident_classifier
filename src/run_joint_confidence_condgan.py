@@ -108,8 +108,8 @@ decreasing_lr = list(map(int, args.decreasing_lr.split(',')))
 onehot = torch.zeros(10, 10)
 onehot = onehot.scatter_(1, torch.LongTensor([0, 1, 2, 3, 4, 5, 6, 7, 8, 9]).view(10,1), 1).view(10, 10, 1, 1)
 img_size = 32
-num_labels = 2
-fill = torch.zeros([num_labels, num_labels, img_size, img_size])
+num_labels = 5
+fill = torch.zeros([num_labels, num_labels, img_size/4, img_size/4])
 for i in range(num_labels):
     fill[i, i, :, :] = 1
 fill = fill.cuda()
@@ -132,8 +132,8 @@ def train(epoch):
     for batch_idx, (data, y_labels) in enumerate(train_loader):
         # train discriminator D
         D.zero_grad()
-        x_ = torch.cat([data[(y_labels==0).squeeze()],data[(y_labels==1).squeeze()]],0)
-        y_ = torch.cat([y_labels[(y_labels==0).squeeze()],y_labels[(y_labels==1).squeeze()]],0)
+        x_ = torch.cat([data[(y_labels==0).squeeze()],data[(y_labels==1).squeeze()],data[(y_labels==2).squeeze()],data[(y_labels==3).squeeze()],data[(y_labels==4).squeeze()]],0)
+        y_ = torch.cat([y_labels[(y_labels==0).squeeze()],y_labels[(y_labels==1).squeeze()],y_labels[(y_labels==2).squeeze()],y_labels[(y_labels==3).squeeze()],y_labels[(y_labels==4).squeeze()]],0)
         mini_batch = x_.size()[0]
 
         y_real_ = torch.ones(mini_batch)
@@ -143,8 +143,8 @@ def train(epoch):
         y_fill_ = fill[y_.squeeze().tolist()]
         #y_fill_ = fill[y_]
 
-        assert y_fill_[0, y_.squeeze().tolist()[0], :, :].sum() == 1024
-        assert y_fill_.sum() == 1024 * mini_batch
+        assert y_fill_[0, y_.squeeze().tolist()[0], :, :].sum() == (img_size/4)**2
+        assert y_fill_.sum() == (img_size/4)**2 * mini_batch
 
         x_, y_fill_ = Variable(x_.cuda()), Variable(y_fill_.cuda())
 
@@ -158,8 +158,8 @@ def train(epoch):
         assert y_label_[0,y_[0]] == 1
         assert y_label_.shape == (mini_batch,10,1,1)
 
-        assert y_fill_[0,y_[0],:,:].sum() == 1024
-        assert y_fill_.sum() == 1024*mini_batch
+        assert y_fill_[0,y_[0],:,:].sum() == (img_size/4)**2
+        assert y_fill_.sum() == (img_size/4)**2*mini_batch
 
         z_, y_label_, y_fill_ = Variable(z_.cuda()), Variable(y_label_.cuda()), Variable(y_fill_.cuda())
 
@@ -191,8 +191,8 @@ def train(epoch):
         assert y_label_[0, y_[0]] == 1
         assert y_label_.shape == (mini_batch, 10, 1, 1)
 
-        assert y_fill_[0, y_[0], :, :].sum() == 1024
-        assert y_fill_.sum() == 1024 * mini_batch
+        assert y_fill_[0, y_[0], :, :].sum() == (img_size/4)**2
+        assert y_fill_.sum() == (img_size/4)**2 * mini_batch
 
         G_result = G(z_, y_label_)
         D_result = D(G_result, y_fill_).squeeze()

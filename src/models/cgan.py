@@ -40,15 +40,15 @@ class generator(nn.Module):
     # initializers
     def __init__(self, d=126):
         super(generator, self).__init__()
-        self.deconv1_1 = nn.ConvTranspose2d(100, d*2, 4, 1, 0)
-        self.deconv1_1_bn = nn.BatchNorm2d(d*2)
-        self.deconv1_2 = nn.ConvTranspose2d(10, d*2, 4, 1, 0)
-        self.deconv1_2_bn = nn.BatchNorm2d(d*2)
-        self.deconv2 = nn.ConvTranspose2d(d*4, d*2, 4, 2, 1)
-        self.deconv2_bn = nn.BatchNorm2d(d*2)
-        self.deconv3 = nn.ConvTranspose2d(d*2, d, 4, 2, 1)
-        self.deconv3_bn = nn.BatchNorm2d(d)
-        self.deconv4 = nn.ConvTranspose2d(d, 3, 4, 2, 1)
+        self.deconv1_1 = nn.ConvTranspose2d(100, d, 4, 1, 0)
+        self.deconv1_1_bn = nn.BatchNorm2d(d)
+        self.deconv1_2 = nn.ConvTranspose2d(10, d, 4, 1, 0)
+        self.deconv1_2_bn = nn.BatchNorm2d(d)
+        self.deconv2 = nn.ConvTranspose2d(d*2, d*4, 4, 2, 1)
+        self.deconv2_bn = nn.BatchNorm2d(d*4)
+        self.deconv3 = nn.ConvTranspose2d(d*4, d*8, 4, 2, 1)
+        self.deconv3_bn = nn.BatchNorm2d(d*8)
+        self.deconv4 = nn.ConvTranspose2d(d*8, 3, 4, 2, 1)
 
     # weight_init
     def weight_init(self, mean, std):
@@ -70,13 +70,14 @@ class generator(nn.Module):
 
 class discriminator(nn.Module):
     # initializers
-    def __init__(self, d=126):
+    def __init__(self, d=226):
         super(discriminator, self).__init__()
+        self.d = d
         self.conv1_1 = nn.Conv2d(3, d/2, 4, 2, 1)
-        self.conv1_2 = nn.Conv2d(2, d/2, 4, 2, 1)
-        self.conv2 = nn.Conv2d(d, d*2, 4, 2, 1)
+        self.conv1_2 = nn.Conv2d(5, d/2, 4, 2, 1)
+        self.conv2 = nn.Conv2d(d/2 , d*2, 4, 2, 1)
         self.conv2_bn = nn.BatchNorm2d(d*2)
-        self.conv3 = nn.Conv2d(d*2, d*4, 4, 2, 1)
+        self.conv3 = nn.Conv2d(d*2+ 5, d*4, 4, 2, 1)
         self.conv3_bn = nn.BatchNorm2d(d*4)
         self.conv4 = nn.Conv2d(d * 4, 1, 4, 1, 0)
 
@@ -88,9 +89,11 @@ class discriminator(nn.Module):
     # forward method
     def forward(self, input, label):
         x = F.leaky_relu(self.conv1_1(input), 0.2)
-        y = F.leaky_relu(self.conv1_2(label), 0.2)
-        x = torch.cat([x, y], 1)
+        #y = F.leaky_relu(self.conv1_2(label), 0.2)
         x = F.leaky_relu(self.conv2_bn(self.conv2(x)), 0.2)
+
+        x = torch.cat([x, label], 1)
+
         x = F.leaky_relu(self.conv3_bn(self.conv3(x)), 0.2)
         x = F.sigmoid(self.conv4(x))
 
