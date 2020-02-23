@@ -77,9 +77,9 @@ class discriminator(nn.Module):
         self.conv1_2 = nn.Conv2d(5, d/2, 4, 2, 1)
         self.conv2 = nn.Conv2d(d/2 , d*2, 4, 2, 1)
         self.conv2_bn = nn.BatchNorm2d(d*2)
-        self.conv3 = nn.Conv2d(d*2+ 5, d*4, 4, 2, 1)
+        self.conv3 = nn.Conv2d(d*2, d*4, 4, 2, 1)
         self.conv3_bn = nn.BatchNorm2d(d*4)
-        self.conv4 = nn.Conv2d(d * 4, 1, 4, 1, 0)
+        self.conv4 = nn.Conv2d(d * 4+5, 1, 4, 1, 0)
 
     # weight_init
     def weight_init(self, mean, std):
@@ -92,9 +92,8 @@ class discriminator(nn.Module):
         #y = F.leaky_relu(self.conv1_2(label), 0.2)
         x = F.leaky_relu(self.conv2_bn(self.conv2(x)), 0.2)
 
-        x = torch.cat([x, label], 1)
-
         x = F.leaky_relu(self.conv3_bn(self.conv3(x)), 0.2)
+        x = torch.cat([x, label], 1)
         x = F.sigmoid(self.conv4(x))
 
         return x

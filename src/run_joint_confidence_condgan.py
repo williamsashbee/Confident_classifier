@@ -109,7 +109,7 @@ onehot = torch.zeros(10, 10)
 onehot = onehot.scatter_(1, torch.LongTensor([0, 1, 2, 3, 4, 5, 6, 7, 8, 9]).view(10,1), 1).view(10, 10, 1, 1)
 img_size = 32
 num_labels = 5
-fill = torch.zeros([num_labels, num_labels, img_size/4, img_size/4])
+fill = torch.zeros([num_labels, num_labels, img_size/8, img_size/8])
 for i in range(num_labels):
     fill[i, i, :, :] = 1
 fill = fill.cuda()
@@ -143,8 +143,8 @@ def train(epoch):
         y_fill_ = fill[y_.squeeze().tolist()]
         #y_fill_ = fill[y_]
 
-        assert y_fill_[0, y_.squeeze().tolist()[0], :, :].sum() == (img_size/4)**2
-        assert y_fill_.sum() == (img_size/4)**2 * mini_batch
+        assert y_fill_[0, y_.squeeze().tolist()[0], :, :].sum() == (img_size/8)**2
+        assert y_fill_.sum() == (img_size/8)**2 * mini_batch
 
         x_, y_fill_ = Variable(x_.cuda()), Variable(y_fill_.cuda())
 
@@ -158,8 +158,8 @@ def train(epoch):
         assert y_label_[0,y_[0]] == 1
         assert y_label_.shape == (mini_batch,10,1,1)
 
-        assert y_fill_[0,y_[0],:,:].sum() == (img_size/4)**2
-        assert y_fill_.sum() == (img_size/4)**2*mini_batch
+        assert y_fill_[0,y_[0],:,:].sum() == (img_size/8)**2
+        assert y_fill_.sum() == (img_size/8)**2*mini_batch
 
         z_, y_label_, y_fill_ = Variable(z_.cuda()), Variable(y_label_.cuda()), Variable(y_fill_.cuda())
 
@@ -191,8 +191,8 @@ def train(epoch):
         assert y_label_[0, y_[0]] == 1
         assert y_label_.shape == (mini_batch, 10, 1, 1)
 
-        assert y_fill_[0, y_[0], :, :].sum() == (img_size/4)**2
-        assert y_fill_.sum() == (img_size/4)**2 * mini_batch
+        assert y_fill_[0, y_[0], :, :].sum() == (img_size/8)**2
+        assert y_fill_.sum() == (img_size/8)**2 * mini_batch
 
         G_result = G(z_, y_label_)
         D_result = D(G_result, y_fill_).squeeze()
