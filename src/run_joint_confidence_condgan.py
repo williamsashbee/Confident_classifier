@@ -108,8 +108,9 @@ decreasing_lr = list(map(int, args.decreasing_lr.split(',')))
 onehot = torch.zeros(10, 10)
 onehot = onehot.scatter_(1, torch.LongTensor([0, 1, 2, 3, 4, 5, 6, 7, 8, 9]).view(10,1), 1).view(10, 10, 1, 1)
 img_size = 32
-fill = torch.zeros([10, 10, img_size, img_size])
-for i in range(10):
+num_labels = 2
+fill = torch.zeros([num_labels, num_labels, img_size, img_size])
+for i in range(num_labels):
     fill[i, i, :, :] = 1
 fill = fill.cuda()
 #os.environ["CUDA_LAUNCH_BLOCKING"]="1"
@@ -118,7 +119,7 @@ fill = fill.cuda()
 BCE_loss = nn.BCELoss()
 #fixed_noise = torch.FloatTensor(64, nz, 1, 1).normal_(0, 1)
 fixed_noise = torch.randn((64, 100)).view(-1, 100, 1, 1)
-y_ = (torch.rand(64, 1) * 10).type(torch.LongTensor).squeeze()
+y_ = (torch.rand(64, 1) * num_labels).type(torch.LongTensor).squeeze()
 fixed_label = onehot[y_]
 
 
@@ -151,7 +152,7 @@ def train(epoch):
         D_real_loss = BCE_loss(D_result, y_real_)
 
         z_ = torch.randn((mini_batch, 100)).view(-1, 100, 1, 1)
-        y_ = (torch.rand(mini_batch, 1) * 10).type(torch.LongTensor).squeeze()
+        y_ = (torch.rand(mini_batch, 1) * num_labels).type(torch.LongTensor).squeeze()
         y_label_ = onehot[y_]
         y_fill_ = fill[y_]
         assert y_label_[0,y_[0]] == 1
@@ -181,7 +182,7 @@ def train(epoch):
         G.zero_grad()
 
         z_ = torch.randn((mini_batch, 100)).view(-1, 100, 1, 1)
-        y_ = (torch.rand(mini_batch, 1) * 10).type(torch.LongTensor).squeeze()
+        y_ = (torch.rand(mini_batch, 1) * num_labels).type(torch.LongTensor).squeeze()
         y_label_ = onehot[y_]
         y_fill_ = fill[y_]
 
