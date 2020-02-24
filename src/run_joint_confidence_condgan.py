@@ -60,6 +60,7 @@ train_loader, test_loader = data_loader.getTargetDataSet(args.dataset, args.batc
 transform = transforms.Compose([
         transforms.Scale(32),
         transforms.ToTensor(),
+        transforms.Lambda(lambda x : x.repeat(3, 1, 1)),
         transforms.Normalize(mean=(0.5, 0.5, 0.5), std=(0.5, 0.5, 0.5))
 ])
 
@@ -129,9 +130,12 @@ def train(epoch):
     #G_train_loss = 3
     trg = 0
     trd = 0
-    for batch_idx, (data, y_labels) in enumerate(train_loader):
+    i = 0
+
+    for batch_idx, (data, y_labels) in enumerate(train_loader_mnist):
         uniform_dist = torch.Tensor(data.size(0), args.num_classes).fill_((1. / args.num_classes)).cuda()
         x_ = data.cuda()
+        assert x_[0,:,:,:].shape == (3,32,32)
 
         # train discriminator D
         D.zero_grad()
@@ -236,7 +240,7 @@ def train(epoch):
         assert y_fill_.sum() == (img_size / 8) ** 2 * data.shape[0]
 
         G_result = G(z_, y_label_)
-        D_result = D(G_result, y_fill_).squeeze()
+        #!!!#D_result = D(G_result, y_fill_).squeeze()
 
         ####
         KL_fake_output = F.log_softmax(model(G_result))
