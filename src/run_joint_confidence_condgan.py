@@ -97,7 +97,7 @@ fixed_noise = Variable(fixed_noise)
 print('Setup optimizer')
 lr = 0.0002
 batch_size = 128
-#optimizer = optim.Adam(model.parameters(), lr=args.lr, weight_decay=args.wd)
+optimizer = optim.Adam(model.parameters(), lr=args.lr, weight_decay=args.wd)
 G_optimizer = optim.Adam(G.parameters(), lr=lr, betas=(0.5, 0.999))
 D_optimizer = optim.Adam(D.parameters(), lr=lr, betas=(0.5, 0.999))
 
@@ -105,11 +105,11 @@ decreasing_lr = list(map(int, args.decreasing_lr.split(',')))
 
 
 
-onehot = torch.zeros(10, 10)
-onehot = onehot.scatter_(1, torch.LongTensor([0, 1, 2, 3, 4, 5, 6, 7, 8, 9]).view(10,1), 1).view(10, 10, 1, 1)
+onehot = torch.zeros(10, 10).cuda()
+onehot = onehot.scatter_(1, torch.cuda.LongTensor([0, 1, 2, 3, 4, 5, 6, 7, 8, 9]).view(10,1), 1).view(10, 10, 1, 1)
 img_size = 32
 num_labels = 10
-fill = torch.zeros([num_labels, num_labels, img_size/8, img_size/8])
+fill = torch.zeros([num_labels, num_labels, img_size/8, img_size/8]).cuda()
 for i in range(num_labels):
     fill[i, i, :, :] = 1
 fill = fill.cuda()
@@ -132,6 +132,7 @@ def train(epoch):
     for batch_idx, (data, y_labels) in enumerate(train_loader):
         # train discriminator D
         D.zero_grad()
+        uniform_dist = torch.Tensor(data.size(0), args.num_classes).fill_((1. / args.num_classes)).cuda()
         x_ = data
         y_ = y_labels
         mini_batch = x_.size()[0]
@@ -199,13 +200,56 @@ def train(epoch):
 
         G_train_loss = BCE_loss(D_result, y_real_)
 
-        G_train_loss.backward()
+        # minimize the true distribution
+        KL_fake_output = F.log_softmax(model(G_result))
+        errG_KL = F.kl_div(KL_fake_output, uniform_dist)*args.num_classes
+        generator_loss = G_train_loss + args.beta*errG_KL # 12.0, .65, 0e-8
+        generator_loss.backward()
+
         G_optimizer.step()
 
         #G_losses.append(G_train_loss.item())
+        ###########################
+        # (3) Update classifier   #
+        ###########################
+        # cross entropy loss
+
+        optimizer.zero_grad()
+
+        output = F.log_softmax(model(x_))
+        loss = F.nll_loss(output.cuda(), y_labels.type(torch.cuda.LongTensor).reshape((y_labels.shape[0],)))
+
+        # KL divergence
+
+        ####
+        z_ = torch.randn((mini_batch, 100)).view(-1, 100, 1, 1).cuda()
+        y_ = (torch.rand(mini_batch, 1) * num_labels).type(torch.LongTensor).squeeze().cuda()
+        y_label_ = onehot[y_]
+        y_fill_ = fill[y_]
+
+        assert y_label_[0, y_[0]] == 1
+        assert y_label_.shape == (mini_batch, 10, 1, 1)
+
+        assert y_fill_[0, y_[0], :, :].sum() == (img_size / 8) ** 2
+        assert y_fill_.sum() == (img_size / 8) ** 2 * mini_batch
+
+        G_result = G(z_, y_label_)
+        D_result = D(G_result, y_fill_).squeeze()
+
+        ####
+
+        KL_fake_output = F.log_softmax(model(G_result))
+        KL_loss_fake = F.kl_div(KL_fake_output, uniform_dist) * args.num_classes
+        total_loss = loss + args.beta * KL_loss_fake
+        total_loss.backward()
+        optimizer.step()
 
         if batch_idx % args.log_interval == 0:
             print("Epoch {} , Descriminator loss {:.6f} Generator loss {:.6f} traingenerator {:.6f} traindiscriminator {:.6f}".format(epoch, D_train_loss,G_train_loss, trg,trd))
+            print('Classification Train Epoch: {} [{}/{} ({:.0f}%)]\tLoss: {:.6f}, KL fake Loss: {:.6f}'.format(
+                epoch, batch_idx * len(data), len(train_loader.dataset),
+                       100. * batch_idx / len(train_loader), loss.data.item(), KL_loss_fake.data.item()))
+
             #print('Classification Train Epoch: {} [{}/{} ({:.0f}%)]\tLoss: {:.6f}, KL fake Loss: {:.6f}'.format(
              #   epoch, batch_idx * len(data), len(train_loader.dataset),
              #   100. * batch_idx / len(train_loader), loss.data.item(), KL_loss_fake.data.item()))
