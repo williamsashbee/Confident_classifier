@@ -70,7 +70,7 @@ class generator(nn.Module):
 
 class discriminator(nn.Module):
     # initializers
-    def __init__(self, d=512):
+    def __init__(self, d=512,num_classes = 10):
         super(discriminator, self).__init__()
         self.d = d
         self.conv1_1 = nn.Conv2d(3, d/2, 4, 2, 1)
@@ -79,7 +79,7 @@ class discriminator(nn.Module):
         self.conv2_bn = nn.BatchNorm2d(d)
         self.conv3 = nn.Conv2d(d, d*2, 4, 2, 1)
         self.conv3_bn = nn.BatchNorm2d(d*2)
-        self.conv4 = nn.Conv2d(d * 2+5, 1, 4, 1, 0)
+        self.conv4 = nn.Conv2d(d * 2+num_classes, 1, 4, 1, 0)
 
     # weight_init
     def weight_init(self, mean, std):

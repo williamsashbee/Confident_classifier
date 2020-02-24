@@ -108,7 +108,7 @@ decreasing_lr = list(map(int, args.decreasing_lr.split(',')))
 onehot = torch.zeros(10, 10)
 onehot = onehot.scatter_(1, torch.LongTensor([0, 1, 2, 3, 4, 5, 6, 7, 8, 9]).view(10,1), 1).view(10, 10, 1, 1)
 img_size = 32
-num_labels = 5
+num_labels = 10
 fill = torch.zeros([num_labels, num_labels, img_size/8, img_size/8])
 for i in range(num_labels):
     fill[i, i, :, :] = 1
@@ -132,8 +132,8 @@ def train(epoch):
     for batch_idx, (data, y_labels) in enumerate(train_loader):
         # train discriminator D
         D.zero_grad()
-        x_ = torch.cat([data[(y_labels==0).squeeze()],data[(y_labels==1).squeeze()],data[(y_labels==2).squeeze()],data[(y_labels==3).squeeze()],data[(y_labels==4).squeeze()]],0)
-        y_ = torch.cat([y_labels[(y_labels==0).squeeze()],y_labels[(y_labels==1).squeeze()],y_labels[(y_labels==2).squeeze()],y_labels[(y_labels==3).squeeze()],y_labels[(y_labels==4).squeeze()]],0)
+        x_ = data
+        y_ = y_labels
         mini_batch = x_.size()[0]
 
         y_real_ = torch.ones(mini_batch)
