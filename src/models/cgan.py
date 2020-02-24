@@ -36,9 +36,9 @@ def cDiscriminator(n_gpu, nc, ndf):
     #model.apply(cweights_init)
     return model
 
-class generator(nn.Module):
+class generator(nn.Module): #https://machinelearningmastery.com/how-to-develop-an-auxiliary-classifier-gan-ac-gan-from-scratch-with-keras/
     # initializers
-    def __init__(self, d=120):
+    def __init__(self, d=90):
         super(generator, self).__init__()
         self.deconv1_1 = nn.ConvTranspose2d(100, d*4, 4, 1, 0)
         self.deconv1_1_bn = nn.BatchNorm2d(d*4)
@@ -70,16 +70,16 @@ class generator(nn.Module):
 
 class discriminator(nn.Module):
     # initializers
-    def __init__(self, d=512,num_classes = 10):
+    def __init__(self, d=256,num_classes = 10):
         super(discriminator, self).__init__()
         self.d = d
-        self.conv1_1 = nn.Conv2d(3, d/2, 4, 2, 1)
-        #self.conv1_2 = nn.Conv2d(5, d/2, 4, 2, 1)
-        self.conv2 = nn.Conv2d(d/2 , d, 4, 2, 1)
-        self.conv2_bn = nn.BatchNorm2d(d)
-        self.conv3 = nn.Conv2d(d, d*2, 4, 2, 1)
-        self.conv3_bn = nn.BatchNorm2d(d*2)
-        self.conv4 = nn.Conv2d(d * 2+num_classes, 1, 4, 1, 0)
+        self.conv1 = nn.Conv2d(3+num_classes, d, 4, 2, 1)
+        self.conv1_bn = nn.BatchNorm2d(d)
+        self.conv2 = nn.Conv2d(d, 2*d, 4, 2, 1)
+        self.conv2_bn = nn.BatchNorm2d(2*d)
+        self.conv3 = nn.Conv2d(2*d, 4*d, 4, 2, 1)
+        self.conv3_bn = nn.BatchNorm2d(4*d)
+        self.conv4 = nn.Conv2d(4*d , 1, 4, 1, 0)
 
     # weight_init
     def weight_init(self, mean, std):
@@ -88,12 +88,14 @@ class discriminator(nn.Module):
 
     # forward method
     def forward(self, input, label):
-        x = F.leaky_relu(self.conv1_1(input), 0.2)
+        x = torch.cat([input, label], 1)
+
+        x = F.leaky_relu(self.conv1_bn(self.conv1(x)), 0.2)
+
         #y = F.leaky_relu(self.conv1_2(label), 0.2)
         x = F.leaky_relu(self.conv2_bn(self.conv2(x)), 0.2)
 
         x = F.leaky_relu(self.conv3_bn(self.conv3(x)), 0.2)
-        x = torch.cat([x, label], 1)
         x = F.sigmoid(self.conv4(x))
 
         return x

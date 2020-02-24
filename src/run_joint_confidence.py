@@ -148,7 +148,7 @@ def train(epoch):
         # cross entropy loss
         optimizer.zero_grad()
         output = F.log_softmax(model(data))
-        loss = F.nll_loss(output.cuda(), target.type(torch.cuda.LongTensor).reshape((target.shape[0],)))
+        loss = F.nll_loss(output, target.type(torch.cuda.LongTensor).reshape((target.shape[0],)))
 
         # KL divergence
         noise = torch.FloatTensor(data.size(0), nz, 1, 1).normal_(0, 1).cuda()
