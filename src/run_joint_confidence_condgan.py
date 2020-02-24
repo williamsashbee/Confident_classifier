@@ -24,7 +24,7 @@ os.environ["CUDA_VISIBLE_DEVICES"]="5"
 parser = argparse.ArgumentParser(description='Training code - joint confidence')
 parser.add_argument('--batch-size', type=int, default=128, help='input batch size for training')
 parser.add_argument('--epochs', type=int, default=100, help='number of epochs to train')
-parser.add_argument('--lr', type=float, default=0.000002, help='learning rate')
+parser.add_argument('--lr', type=float, default=0.0002, help='learning rate')
 parser.add_argument('--no-cuda', action='store_true', default=False, help='disables CUDA training')
 parser.add_argument('--seed', type=int, default=1, help='random seed')
 parser.add_argument('--log-interval', type=int, default=100, help='how many batches to wait before logging training status')
@@ -130,10 +130,11 @@ def train(epoch):
     trg = 0
     trd = 0
     for batch_idx, (data, y_labels) in enumerate(train_loader):
+        uniform_dist = torch.Tensor(data.size(0), args.num_classes).fill_((1. / args.num_classes)).cuda()
+        x_ = data.cuda()
+
         # train discriminator D
         D.zero_grad()
-        uniform_dist = torch.Tensor(data.size(0), args.num_classes).fill_((1. / args.num_classes)).cuda()
-        x_ = data
         y_ = y_labels
         mini_batch = x_.size()[0]
 
@@ -172,7 +173,7 @@ def train(epoch):
 
         D_train_loss = D_real_loss + D_fake_loss
         trg+=1
-        if D_train_loss >.5:
+        if D_train_loss >.1:
             trd+=1
             D_train_loss.backward()
             D_optimizer.step()
@@ -200,6 +201,7 @@ def train(epoch):
 
         G_train_loss = BCE_loss(D_result, y_real_)
 
+
         # minimize the true distribution
         KL_fake_output = F.log_softmax(model(G_result))
         errG_KL = F.kl_div(KL_fake_output, uniform_dist)*args.num_classes
@@ -207,7 +209,6 @@ def train(epoch):
         generator_loss.backward()
 
         G_optimizer.step()
-
         #G_losses.append(G_train_loss.item())
         ###########################
         # (3) Update classifier   #
@@ -215,32 +216,35 @@ def train(epoch):
         # cross entropy loss
 
         optimizer.zero_grad()
+        x_ = Variable(x_)
 
         output = F.log_softmax(model(x_))
-        loss = F.nll_loss(output.cuda(), y_labels.type(torch.cuda.LongTensor).reshape((y_labels.shape[0],)))
+        loss = F.nll_loss(output.cuda(), y_labels.type(torch.cuda.LongTensor).squeeze())
 
         # KL divergence
 
         ####
-        z_ = torch.randn((mini_batch, 100)).view(-1, 100, 1, 1).cuda()
-        y_ = (torch.rand(mini_batch, 1) * num_labels).type(torch.LongTensor).squeeze().cuda()
+        z_ = torch.randn((data.shape[0], 100)).view(-1, 100, 1, 1).cuda()
+        y_ = (torch.rand(data.shape[0], 1) * num_labels).type(torch.LongTensor).squeeze().cuda()
         y_label_ = onehot[y_]
         y_fill_ = fill[y_]
 
         assert y_label_[0, y_[0]] == 1
-        assert y_label_.shape == (mini_batch, 10, 1, 1)
+        assert y_label_.shape == (data.shape[0], 10, 1, 1)
 
         assert y_fill_[0, y_[0], :, :].sum() == (img_size / 8) ** 2
-        assert y_fill_.sum() == (img_size / 8) ** 2 * mini_batch
+        assert y_fill_.sum() == (img_size / 8) ** 2 * data.shape[0]
 
         G_result = G(z_, y_label_)
         D_result = D(G_result, y_fill_).squeeze()
 
         ####
-
         KL_fake_output = F.log_softmax(model(G_result))
         KL_loss_fake = F.kl_div(KL_fake_output, uniform_dist) * args.num_classes
+
+
         total_loss = loss + args.beta * KL_loss_fake
+        #total_loss = loss
         total_loss.backward()
         optimizer.step()
 
@@ -290,7 +294,7 @@ for epoch in range(1, args.epochs + 1):
     if epoch in decreasing_lr:
         G_optimizer.param_groups[0]['lr'] *= args.droprate
         D_optimizer.param_groups[0]['lr'] *= args.droprate
-        #optimizer.param_groups[0]['lr'] *= args.droprate
+        optimizer.param_groups[0]['lr'] *= args.droprate
     if epoch % 20 == 0:
         # do checkpointing
         torch.save(G.state_dict(), '%s/netG_epoch_%d.pth' % (args.outf, epoch))
