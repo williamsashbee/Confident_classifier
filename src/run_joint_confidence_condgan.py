@@ -31,8 +31,8 @@ parser.add_argument('--seed', type=int, default=1, help='random seed')
 parser.add_argument('--log-interval', type=int, default=100,
                     help='how many batches to wait before logging training status')
 parser.add_argument('--nz', type=int, default=100, help='size of the latent z vector')
-parser.add_argument('--ngf', type=int, default=64)
-parser.add_argument('--ndf', type=int, default=64)
+parser.add_argument('--ngf', type=int, default=180)
+parser.add_argument('--ndf', type=int, default=80)
 parser.add_argument('--beta1', type=float, default=0.5, help='beta1 for adam. default=0.5')
 parser.add_argument('--netG', default='', help="path to netG (to continue training)")
 parser.add_argument('--netD', default='', help="path to netD (to continue training)")
@@ -64,18 +64,21 @@ if args.cuda:
 kwargs = {'num_workers': 1, 'pin_memory': True} if args.cuda else {}
 
 print('load data: ', args.dataset)
-train_loader, test_loader = data_loader.getTargetDataSet(args.dataset, args.batch_size, args.imageSize, args.dataroot)
+if args.dataset=='mnist':
+    transform = transforms.Compose([
+        transforms.Scale(32),
+        transforms.ToTensor(),
+        transforms.Lambda(lambda x: x.repeat(3, 1, 1)),
+        transforms.Normalize(mean=(0.5, 0.5, 0.5), std=(0.5, 0.5, 0.5))
+    ])
+    train_loader = torch.utils.data.DataLoader(
+        datasets.MNIST('data', train=True, download=True, transform=transform),
+        batch_size=128, shuffle=True)
+    test_loader = None
+else:
+    train_loader, test_loader = data_loader.getTargetDataSet(args.dataset, args.batch_size, args.imageSize, args.dataroot)
 
-transform = transforms.Compose([
-    transforms.Scale(32),
-    transforms.ToTensor(),
-    transforms.Lambda(lambda x: x.repeat(3, 1, 1)),
-    transforms.Normalize(mean=(0.5, 0.5, 0.5), std=(0.5, 0.5, 0.5))
-])
 
-train_loader_mnist = torch.utils.data.DataLoader(
-    datasets.MNIST('data', train=True, download=True, transform=transform),
-    batch_size=128, shuffle=True)
 
 print('Load model')
 model = models.vgg13()
@@ -88,7 +91,8 @@ nz = int(args.nz)
 ngf = int(args.ngf)
 ndf = int(args.ndf)
 if args.dataset == 'mnist':
-    nc = 1
+    #nc = 1
+    nc=3
     nb_label = 10
 else:
     nc = 3
@@ -188,7 +192,7 @@ def train(epoch):
         s_output, c_output = netD(input)
         s_errD_real = s_criterion(s_output, s_label)
         c_errD_real = c_criterion(c_output, c_label)
-        errD_real = s_errD_real + c_errD_real
+        errD_real = s_errD_real + 2.0*c_errD_real
         errD_real.backward()
         D_x = s_output.data.mean()
 
@@ -215,13 +219,13 @@ def train(epoch):
         s_output, c_output = netD(fake.detach())
         s_errD_fake = s_criterion(s_output, s_label)
         c_errD_fake = c_criterion(c_output, c_label)
-        errD_fake = s_errD_fake + c_errD_fake
+        errD_fake = s_errD_fake + 2.0*c_errD_fake
 
         errD_fake.backward()
         D_G_z1 = s_output.data.mean()
         errD = s_errD_real + s_errD_fake
         optimizerD.step()
-
+        trd += 1
         ###########################
         # (2) Update G network
         ###########################
@@ -231,11 +235,13 @@ def train(epoch):
         s_errG = s_criterion(s_output, s_label)
         c_errG = c_criterion(c_output, c_label)
 
-        errG = s_errG + c_errG
+        errG = s_errG + 2.0*c_errG
         errG.backward()
         D_G_z2 = s_output.data.mean()
-        optimizerG.step()
 
+        if errG > 0:
+            optimizerG.step()
+            trg+=1
         # minimize the true distribution
         # KL_fake_output = F.log_softmax(model(G_result))
         # errG_KL = F.kl_div(KL_fake_output, uniform_dist)*args.num_classes
