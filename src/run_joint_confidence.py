@@ -29,7 +29,7 @@ parser.add_argument('--lr', type=float, default=0.0002, help='learning rate')
 parser.add_argument('--no-cuda', action='store_true', default=False, help='disables CUDA training')
 parser.add_argument('--seed', type=int, default=1, help='random seed')
 parser.add_argument('--log-interval', type=int, default=100, help='how many batches to wait before logging training status')
-parser.add_argument('--dataset', default='svhn', help='cifar10 | svhn')
+parser.add_argument('--dataset', default='mnist', help='mnist | cifar10 | svhn')
 parser.add_argument('--dataroot', required=True, help='path to dataset')
 parser.add_argument('--imageSize', type=int, default=32, help='the height / width of the input image to network')
 parser.add_argument('--outf', default='.', help='folder to output images and model checkpoints')
@@ -56,7 +56,24 @@ if args.cuda:
 kwargs = {'num_workers': 1, 'pin_memory': True} if args.cuda else {}
 
 print('load data: ',args.dataset)
-train_loader, test_loader = data_loader.getTargetDataSet(args.dataset, args.batch_size, args.imageSize, args.dataroot)
+
+if args.dataset == 'mnist':
+    transform = transforms.Compose([
+        transforms.Scale(32),
+        transforms.ToTensor(),
+        transforms.Lambda(lambda x: x.repeat(3, 1, 1)),
+        transforms.Normalize(mean=(0.5, 0.5, 0.5), std=(0.5, 0.5, 0.5))
+    ])
+
+    train_loader = torch.utils.data.DataLoader(
+        datasets.MNIST('data', train=True, download=True, transform=transform),
+        batch_size=128, shuffle=True)
+    test_loader = torch.utils.data.DataLoader(
+        datasets.MNIST('data', train=False, download=True, transform=transform),
+        batch_size=128, shuffle=True)
+else:
+    train_loader, test_loader = data_loader.getTargetDataSet(args.dataset, args.batch_size, args.imageSize,
+                                                             args.dataroot)
 
 print('Load model')
 model = models.vgg13()
@@ -109,7 +126,7 @@ def train(epoch):
         output = netD(data)
         errD_real = criterion(output, targetv)
         errD_real.backward()
-        D_x = output.data.mean()#.55
+        D_x = output.data.mean()
 
         # train with fake
         noise = torch.FloatTensor(data.size(0), nz, 1, 1).normal_(0, 1).cuda()
@@ -122,7 +139,7 @@ def train(epoch):
         errD_fake = criterion(output, targetv)
         errD_fake.backward()
         D_G_z1 = output.data.mean()
-        errD = errD_real + errD_fake #1.6, .67, .93
+        errD = errD_real + errD_fake
         optimizerD.step()
 
         ###########################
@@ -138,7 +155,7 @@ def train(epoch):
         # minimize the true distribution
         KL_fake_output = F.log_softmax(model(fake))
         errG_KL = F.kl_div(KL_fake_output, uniform_dist)*args.num_classes
-        generator_loss = errG + args.beta*errG_KL # 12.0, .65, 0e-8
+        generator_loss = errG + args.beta*errG_KL
         generator_loss.backward()
         optimizerG.step()
 
