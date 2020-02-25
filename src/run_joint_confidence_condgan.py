@@ -30,6 +30,13 @@ parser.add_argument('--no-cuda', action='store_true', default=False, help='disab
 parser.add_argument('--seed', type=int, default=1, help='random seed')
 parser.add_argument('--log-interval', type=int, default=100,
                     help='how many batches to wait before logging training status')
+parser.add_argument('--nz', type=int, default=100, help='size of the latent z vector')
+parser.add_argument('--ngf', type=int, default=64)
+parser.add_argument('--ndf', type=int, default=64)
+parser.add_argument('--beta1', type=float, default=0.5, help='beta1 for adam. default=0.5')
+parser.add_argument('--netG', default='', help="path to netG (to continue training)")
+parser.add_argument('--netD', default='', help="path to netD (to continue training)")
+
 parser.add_argument('--dataset', default='svhn', help='cifar10 | svhn')
 parser.add_argument('--dataroot', required=True, help='path to dataset')
 parser.add_argument('--imageSize', type=int, default=32, help='the height / width of the input image to network')
@@ -75,56 +82,82 @@ model = models.vgg13()
 print(model)
 
 print('load GAN')
-nz = 100
-G = models.cGenerator(1, nz, 64, 3)  # ngpu, nz, ngf, nc
-D = models.cDiscriminator(1, 3, 64)  # ngpu, nc, ndf
-G.weight_init(mean=0.0, std=0.02)
-D.weight_init(mean=0.0, std=0.02)
 
-# Initial setup for GAN
-real_label = 1
-fake_label = 0
-criterion = nn.BCELoss()
-nz = 100
-fixed_noise = torch.FloatTensor(64, nz, 1, 1).normal_(0, 1)
 
-# fixed_noise = torch.randn((128, 100)).view(-1, 100, 1, 1)
-if args.cuda:
-    model.cuda()
-    D.cuda()
-    G.cuda()
-    criterion.cuda()
-    fixed_noise = fixed_noise.cuda()
-fixed_noise = Variable(fixed_noise)
+nz = int(args.nz)
+ngf = int(args.ngf)
+ndf = int(args.ndf)
+if args.dataset == 'mnist':
+    nc = 1
+    nb_label = 10
+else:
+    nc = 3
+    nb_label = 10
+
+netG = models.acnetG(nz, ngf, nc)
+
+if args.netG != '':
+    netG.load_state_dict(torch.load(args.netG))
+print(netG)
+
+netD = models.acnetD(ndf, nc, nb_label)
+
+if args.netD != '':
+    netD.load_state_dict(torch.load(args.netD))
+print(netD)
+
 
 print('Setup optimizer')
-lr = 0.0002
-batch_size = 128
 optimizer = optim.Adam(model.parameters(), lr=args.lr, weight_decay=args.wd)
-G_optimizer = optim.Adam(G.parameters(), lr=lr, betas=(0.5, 0.999))
-D_optimizer = optim.Adam(D.parameters(), lr=lr, betas=(0.5, 0.999))
 
 decreasing_lr = list(map(int, args.decreasing_lr.split(',')))
 
-onehot = torch.zeros(10, 10).cuda()
-onehot = onehot.scatter_(1, torch.cuda.LongTensor([0, 1, 2, 3, 4, 5, 6, 7, 8, 9]).view(10, 1), 1).view(10, 10, 1, 1)
-img_size = 32
 num_labels = 10
-fill = torch.zeros([num_labels, num_labels, img_size , img_size ]).cuda()
-for i in range(num_labels):
-    fill[i, i, :, :] = 1
-fill = fill.cuda()
 # os.environ["CUDA_LAUNCH_BLOCKING"]="1"
+batchSize = 128
+imageSize = 32
+input = torch.FloatTensor(batchSize, 3, imageSize, imageSize)
+noise = torch.FloatTensor(batchSize, nz, 1, 1)
+fixed_noise = torch.FloatTensor(batchSize, nz, 1, 1).normal_(0, 1)
+s_label = torch.FloatTensor(batchSize)
+c_label = torch.LongTensor(batchSize)
 
-# Binary Cross Entropy loss
-BCE_loss = nn.BCELoss()
-# fixed_noise = torch.FloatTensor(64, nz, 1, 1).normal_(0, 1)
-fixed_noise = torch.randn((64, 100)).view(-1, 100, 1, 1)
-y_ = (torch.rand(64, 1) * num_labels).type(torch.LongTensor).squeeze()
-fixed_label = onehot[y_]
-fixed_label_base = 0
-one_hot_zero = 0
-first = True
+real_label = 1
+fake_label = 0
+
+
+s_criterion = nn.BCELoss()
+c_criterion = nn.NLLLoss()
+
+if args.cuda:
+    netD.cuda()
+    netG.cuda()
+    s_criterion.cuda()
+    c_criterion.cuda()
+    input, s_label = input.cuda(), s_label.cuda()
+    c_label = c_label.cuda()
+    noise, fixed_noise = noise.cuda(), fixed_noise.cuda()
+
+input = Variable(input)
+s_label = Variable(s_label)
+c_label = Variable(c_label)
+noise = Variable(noise)
+fixed_noise = Variable(fixed_noise)
+fixed_noise_ = np.random.normal(0, 1, (batchSize, nz))
+random_label = np.random.randint(0, nb_label, batchSize)
+print('fixed label:{}'.format(random_label))
+random_onehot = np.zeros((batchSize, nb_label))
+random_onehot[np.arange(batchSize), random_label] = 1
+fixed_noise_[np.arange(batchSize), :nb_label] = random_onehot[np.arange(batchSize)]
+
+
+fixed_noise_ = (torch.from_numpy(fixed_noise_))
+fixed_noise_ = fixed_noise_.resize_(batchSize, nz, 1, 1)
+fixed_noise.data.copy_(fixed_noise_)
+
+# setup optimizer
+optimizerD = optim.Adam(netD.parameters(), lr=args.lr, betas=(args.beta1, 0.999))
+optimizerG = optim.Adam(netG.parameters(), lr=args.lr, betas=(args.beta1, 0.999))
 
 
 def train(epoch):
@@ -139,116 +172,94 @@ def train(epoch):
     global fixed_label
     global fixed_label_base
     global one_hot_zero
-    for batch_idx, (data, y_labels) in enumerate(train_loader):
-        temp = fixed_label_base
-        if not first:
-            assert temp.sum() == fixed_label_base.sum()
-            assert temp.sum() != 0
-            (one_hot_zero == fixed_label[0,:,:,:]).sum()>0
+    for batch_idx, (img, label) in enumerate(train_loader):
+        ###########################
+        # (1) Update D network
+        ###########################
+        # train with real
+        if img.shape[0] != batchSize:
+            print('shape problem')
+            break
+        netD.zero_grad()
+        batch_size = img.size(0)
+        input.data.resize_(img.size()).copy_(img)
+        s_label.data.resize_(batch_size).fill_(real_label)
+        c_label.data.resize_(batch_size).copy_(label.squeeze())
+        s_output, c_output = netD(input)
+        s_errD_real = s_criterion(s_output, s_label)
+        c_errD_real = c_criterion(c_output, c_label)
+        errD_real = s_errD_real + c_errD_real
+        errD_real.backward()
+        D_x = s_output.data.mean()
 
-        if first:
-            first = False
-            print( "saving fixed_label!")
-            fixed_label_base = y_labels.squeeze()[:64]
-            fixed_label = onehot[y_labels[:64].squeeze().tolist()]
-            vutils.save_image(data[:64], '%s/realReference%03d.png' % (args.outf, epoch), normalize=True)
-            one_hot_zero = fixed_label[0, :, :, :]
-        uniform_dist = torch.Tensor(data.size(0), args.num_classes).fill_((1. / args.num_classes)).cuda()
-        x_ = data.cuda()
-        assert x_[0, :, :, :].shape == (3, 32, 32)
+        #correct, length = test(c_output, c_label)
 
-        # train discriminator D
-        D.zero_grad()
-        y_ = y_labels
-        mini_batch = x_.size()[0]
+        # train with fake
+        noise.data.resize_(batch_size, nz, 1, 1)
+        noise.data.normal_(0, 1)
 
-        y_real_ = torch.ones(mini_batch)
-        y_fake_ = torch.zeros(mini_batch)
-        y_real_, y_fake_ = Variable(y_real_.cuda()), Variable(y_fake_.cuda())
+        label = np.random.randint(0, nb_label, batch_size)
+        noise_ = np.random.normal(0, 1, (batch_size, nz))
+        label_onehot = np.zeros((batch_size, nb_label))
+        label_onehot[np.arange(batch_size), label] = 1
+        noise_[np.arange(batch_size), :nb_label] = label_onehot[np.arange(batch_size)]
 
-        y_fill_ = fill[y_.squeeze().tolist()]
-        # y_fill_ = fill[y_]
+        noise_ = (torch.from_numpy(noise_))
+        noise_ = noise_.resize_(batch_size, nz, 1, 1)
+        noise.data.copy_(noise_)
 
-        assert y_fill_[0, y_.squeeze().tolist()[0], :, :].sum() == (img_size ) ** 2
-        assert y_fill_.sum() == (img_size ) ** 2 * mini_batch
+        c_label.data.resize_(batch_size).copy_(torch.from_numpy(label))
 
-        x_, y_fill_ = Variable(x_.cuda()), Variable(y_fill_.cuda())
+        fake = netG(noise)
+        s_label.data.fill_(fake_label)
+        s_output, c_output = netD(fake.detach())
+        s_errD_fake = s_criterion(s_output, s_label)
+        c_errD_fake = c_criterion(c_output, c_label)
+        errD_fake = s_errD_fake + c_errD_fake
 
-        D_result = D(x_, y_fill_).squeeze()
-        D_real_loss = BCE_loss(D_result, y_real_)
+        errD_fake.backward()
+        D_G_z1 = s_output.data.mean()
+        errD = s_errD_real + s_errD_fake
+        optimizerD.step()
 
-        z_ = torch.randn((mini_batch, 100)).view(-1, 100, 1, 1)
-        y_ = (torch.rand(mini_batch, 1) * num_labels).type(torch.LongTensor).squeeze()
-        y_label_ = onehot[y_]
-        y_fill_ = fill[y_]
-        assert y_label_[0, y_[0]] == 1
-        assert y_label_.shape == (mini_batch, 10, 1, 1)
+        ###########################
+        # (2) Update G network
+        ###########################
+        netG.zero_grad()
+        s_label.data.fill_(real_label)  # fake labels are real for generator cost
+        s_output, c_output = netD(fake)
+        s_errG = s_criterion(s_output, s_label)
+        c_errG = c_criterion(c_output, c_label)
 
-        assert y_fill_[0, y_[0], :, :].sum() == (img_size ) ** 2
-        assert y_fill_.sum() == (img_size ) ** 2 * mini_batch
-
-        z_, y_label_, y_fill_ = Variable(z_.cuda()), Variable(y_label_.cuda()), Variable(y_fill_.cuda())
-
-        G_result = G(z_, y_label_)
-        D_result = D(G_result, y_fill_).squeeze()
-
-        D_fake_loss = BCE_loss(D_result, y_fake_)
-        D_fake_score = D_result.data.mean()
-
-        D_train_loss = D_real_loss + D_fake_loss
-        trg += 1
-        if D_train_loss > .1:
-            trd += 1
-            D_train_loss.backward()
-            D_optimizer.step()
-
-        # D_losses.append(D_train_loss.item())
-
-        # train generator G
-        G.zero_grad()
-
-        z_ = torch.randn((mini_batch, 100)).view(-1, 100, 1, 1)
-        y_ = (torch.rand(mini_batch, 1) * num_labels).type(torch.LongTensor).squeeze()
-        y_label_ = onehot[y_]
-        y_fill_ = fill[y_]
-
-        z_, y_label_, y_fill_ = Variable(z_.cuda()), Variable(y_label_.cuda()), Variable(y_fill_.cuda())
-
-        assert y_label_[0, y_[0]] == 1
-        assert y_label_.shape == (mini_batch, 10, 1, 1)
-
-        assert y_fill_[0, y_[0], :, :].sum() == (img_size ) ** 2
-        assert y_fill_.sum() == (img_size ) ** 2 * mini_batch
-
-        G_result = G(z_, y_label_)
-        D_result = D(G_result, y_fill_).squeeze()
-
-        G_train_loss = BCE_loss(D_result, y_real_)
+        errG = s_errG + c_errG
+        errG.backward()
+        D_G_z2 = s_output.data.mean()
+        optimizerG.step()
 
         # minimize the true distribution
         # KL_fake_output = F.log_softmax(model(G_result))
         # errG_KL = F.kl_div(KL_fake_output, uniform_dist)*args.num_classes
         # generator_loss = G_train_loss + args.beta*errG_KL # 12.0, .65, 0e-8
         # generator_loss.backward()
-        G_train_loss.backward()
-        G_optimizer.step()
+        #G_train_loss.backward()
+        #G_optimizer.step()
         # G_losses.append(G_train_loss.item())
         ###########################
         # (3) Update classifier   #
         ###########################
         # cross entropy loss
-
+        """    
         optimizer.zero_grad()
         x_ = Variable(x_)
 
         output = F.log_softmax(model(x_))
-        loss = F.nll_loss(output.cuda(), y_labels.type(torch.cuda.LongTensor).squeeze())
+        loss = F.nll_loss(output.cuda(), label.type(torch.cuda.LongTensor).squeeze())
 
         # KL divergence
 
         ####
-        z_ = torch.randn((data.shape[0], 100)).view(-1, 100, 1, 1).cuda()
-        y_ = (torch.rand(data.shape[0], 1) * num_labels).type(torch.LongTensor).squeeze().cuda()
+        z_ = torch.randn((img.shape[0], 100)).view(-1, 100, 1, 1).cuda()
+        y_ = (torch.rand(img.shape[0], 1) * num_labels).type(torch.LongTensor).squeeze().cuda()
         y_label_ = onehot[y_]
         y_fill_ = fill[y_]
 
@@ -269,20 +280,21 @@ def train(epoch):
         # total_loss = loss
         total_loss.backward()
         optimizer.step()
-
+        """
         if batch_idx % args.log_interval == 0:
             print(
                 "Epoch {} , Descriminator loss {:.6f} Generator loss {:.6f} traingenerator {:.6f} traindiscriminator {:.6f}".format(
-                    epoch, D_train_loss, G_train_loss, trg, trd))
-            print('Classification Train Epoch: {} [{}/{} ({:.0f}%)]\tLoss: {:.6f}, KL fake Loss: {:.6f}'.format(
-                epoch, batch_idx * len(data), len(train_loader.dataset),
-                       100. * batch_idx / len(train_loader), loss.data.item(), KL_loss_fake.data.item()))
+                    epoch, errD, errG, trg, trd))
+            #print('Classification Train Epoch: {} [{}/{} ({:.0f}%)]\tLoss: {:.6f}, KL fake Loss: {:.6f}'.format(
+            #    epoch, batch_idx * len(data), len(train_loader.dataset),
+            #           100. * batch_idx / len(train_loader), loss.data.item(), KL_loss_fake.data.item()))
 
             # print('Classification Train Epoch: {} [{}/{} ({:.0f}%)]\tLoss: {:.6f}, KL fake Loss: {:.6f}'.format(
             #   epoch, batch_idx * len(data), len(train_loader.dataset),
             #   100. * batch_idx / len(train_loader), loss.data.item(), KL_loss_fake.data.item()))
-            fake = G(fixed_noise.cuda(), fixed_label.cuda())
+            fake = netG(fixed_noise)
             vutils.save_image(fake.data, '%s/SVHNcDCgan_samples_epoch_%03d.png' % (args.outf, epoch), normalize=True)
+
 
 
 def test(epoch):
@@ -316,13 +328,13 @@ def test(epoch):
 
 for epoch in range(1, args.epochs + 1):
     train(epoch)
-    test(epoch)
+#    test(epoch)
     if epoch in decreasing_lr:
-        G_optimizer.param_groups[0]['lr'] *= args.droprate
-        D_optimizer.param_groups[0]['lr'] *= args.droprate
+        optimizerG.param_groups[0]['lr'] *= args.droprate
+        optimizerD.param_groups[0]['lr'] *= args.droprate
         optimizer.param_groups[0]['lr'] *= args.droprate
     if epoch % 20 == 0:
         # do checkpointing
-        torch.save(G.state_dict(), '%s/netG_epoch_%d.pth' % (args.outf, epoch))
-        torch.save(D.state_dict(), '%s/netD_epoch_%d.pth' % (args.outf, epoch))
+        torch.save(netG.state_dict(), '%s/netG_epoch_%d.pth' % (args.outf, epoch))
+        torch.save(netD.state_dict(), '%s/netD_epoch_%d.pth' % (args.outf, epoch))
         torch.save(model.state_dict(), '%s/model_epoch_%d.pth' % (args.outf, epoch))

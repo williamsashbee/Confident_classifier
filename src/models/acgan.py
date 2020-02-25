@@ -26,10 +26,8 @@ class acnetG(nn.Module):
         self.conv3 = nn.ConvTranspose2d(ngf * 4, ngf * 2, 4, 2, 1, bias=False)
         self.BatchNorm3 = nn.BatchNorm2d(ngf * 2)
 
-        self.conv4 = nn.ConvTranspose2d(ngf * 2, ngf * 1, 4, 2, 1, bias=False)
-        self.BatchNorm4 = nn.BatchNorm2d(ngf * 1)
 
-        self.conv5 = nn.ConvTranspose2d(ngf * 1, nc, 4, 2, 1, bias=False)
+        self.conv5 = nn.ConvTranspose2d(ngf * 2, nc, 4, 2, 1, bias=False)
 
         self.apply(weights_init)
 
@@ -44,10 +42,6 @@ class acnetG(nn.Module):
 
         x = self.conv3(x)
         x = self.BatchNorm3(x)
-        x = self.ReLU(x)
-
-        x = self.conv4(x)
-        x = self.BatchNorm4(x)
         x = self.ReLU(x)
 
         x = self.conv5(x)
@@ -65,9 +59,7 @@ class acnetD(nn.Module):
         self.BatchNorm2 = nn.BatchNorm2d(ndf * 2)
         self.conv3 = nn.Conv2d(ndf * 2, ndf * 4, 4, 2, 1, bias=False)
         self.BatchNorm3 = nn.BatchNorm2d(ndf * 4)
-        self.conv4 = nn.Conv2d(ndf * 4, ndf * 8, 4, 2, 1, bias=False)
-        self.BatchNorm4 = nn.BatchNorm2d(ndf * 8)
-        self.conv5 = nn.Conv2d(ndf * 8, ndf * 1, 4, 1, 0, bias=False)
+        self.conv5 = nn.Conv2d(ndf * 4, ndf * 1, 4, 1, 0, bias=False)
         self.disc_linear = nn.Linear(ndf * 1, 1)
         self.aux_linear = nn.Linear(ndf * 1, nb_label)
         self.softmax = nn.Softmax()
@@ -85,10 +77,6 @@ class acnetD(nn.Module):
 
         x = self.conv3(x)
         x = self.BatchNorm3(x)
-        x = self.LeakyReLU(x)
-
-        x = self.conv4(x)
-        x = self.BatchNorm4(x)
         x = self.LeakyReLU(x)
 
         x = self.conv5(x)
