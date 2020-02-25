@@ -38,17 +38,17 @@ def cDiscriminator(n_gpu, nc, ndf):
 
 class generator(nn.Module): #https://machinelearningmastery.com/how-to-develop-an-auxiliary-classifier-gan-ac-gan-from-scratch-with-keras/
     # initializers
-    def __init__(self, d=90):
+    def __init__(self, d=126):
         super(generator, self).__init__()
-        self.deconv1_1 = nn.ConvTranspose2d(100, d*4, 4, 1, 0)
-        self.deconv1_1_bn = nn.BatchNorm2d(d*4)
-        self.deconv1_2 = nn.ConvTranspose2d(10, d*4, 4, 1, 0)
-        self.deconv1_2_bn = nn.BatchNorm2d(d*4)
-        self.deconv2 = nn.ConvTranspose2d(d*8, d*4, 4, 2, 1)
-        self.deconv2_bn = nn.BatchNorm2d(d*4)
-        self.deconv3 = nn.ConvTranspose2d(d*4, d*2, 4, 2, 1)
-        self.deconv3_bn = nn.BatchNorm2d(d*2)
-        self.deconv4 = nn.ConvTranspose2d(d*2, 3, 4, 2, 1)
+        self.deconv1_1 = nn.ConvTranspose2d(100, d*2, 4, 1, 0)
+        self.deconv1_1_bn = nn.BatchNorm2d(d*2)
+        self.deconv1_2 = nn.ConvTranspose2d(10, d*2, 4, 1, 0)
+        self.deconv1_2_bn = nn.BatchNorm2d(d*2)
+        self.deconv2 = nn.ConvTranspose2d(d*4, d*2, 4, 2, 1)
+        self.deconv2_bn = nn.BatchNorm2d(d*2)
+        self.deconv3 = nn.ConvTranspose2d(d*2, d, 4, 2, 1)
+        self.deconv3_bn = nn.BatchNorm2d(d)
+        self.deconv4 = nn.ConvTranspose2d(d, 3, 4, 2, 1)
 
     # weight_init
     def weight_init(self, mean, std):
@@ -70,7 +70,7 @@ class generator(nn.Module): #https://machinelearningmastery.com/how-to-develop-a
 
 class discriminator(nn.Module):
     # initializers
-    def __init__(self, d=256,num_classes = 10):
+    def __init__(self, d=128,num_classes = 10):
         super(discriminator, self).__init__()
         self.d = d
         self.conv1 = nn.Conv2d(3+num_classes, d, 4, 2, 1)

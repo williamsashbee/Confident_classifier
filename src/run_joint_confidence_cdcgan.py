@@ -30,7 +30,7 @@ parser.add_argument('--no-cuda', action='store_true', default=False, help='disab
 parser.add_argument('--seed', type=int, default=1, help='random seed')
 parser.add_argument('--log-interval', type=int, default=100,
                     help='how many batches to wait before logging training status')
-parser.add_argument('--dataset', default='svhn', help='cifar10 | svhn')
+parser.add_argument('--dataset', default='mnist', help='mnist | cifar10 | svhn')
 parser.add_argument('--dataroot', required=True, help='path to dataset')
 parser.add_argument('--imageSize', type=int, default=32, help='the height / width of the input image to network')
 parser.add_argument('--outf', default='.', help='folder to output images and model checkpoints')
@@ -57,18 +57,24 @@ if args.cuda:
 kwargs = {'num_workers': 1, 'pin_memory': True} if args.cuda else {}
 
 print('load data: ', args.dataset)
-train_loader, test_loader = data_loader.getTargetDataSet(args.dataset, args.batch_size, args.imageSize, args.dataroot)
 
-transform = transforms.Compose([
-    transforms.Scale(32),
-    transforms.ToTensor(),
-    transforms.Lambda(lambda x: x.repeat(3, 1, 1)),
-    transforms.Normalize(mean=(0.5, 0.5, 0.5), std=(0.5, 0.5, 0.5))
-])
+if args.dataset == 'mnist':
+    transform = transforms.Compose([
+        transforms.Scale(32),
+        transforms.ToTensor(),
+        transforms.Lambda(lambda x: x.repeat(3, 1, 1)),
+        transforms.Normalize(mean=(0.5, 0.5, 0.5), std=(0.5, 0.5, 0.5))
+    ])
 
-train_loader_mnist = torch.utils.data.DataLoader(
-    datasets.MNIST('data', train=True, download=True, transform=transform),
-    batch_size=128, shuffle=True)
+    train_loader = torch.utils.data.DataLoader(
+        datasets.MNIST('data', train=True, download=True, transform=transform),
+        batch_size=128, shuffle=True)
+    test_loader = torch.utils.data.DataLoader(
+        datasets.MNIST('data', train=False, download=True, transform=transform),
+        batch_size=128, shuffle=True)
+else:
+    train_loader, test_loader = data_loader.getTargetDataSet(args.dataset, args.batch_size, args.imageSize,
+                                                             args.dataroot)
 
 print('Load model')
 model = models.vgg13()
@@ -282,7 +288,7 @@ def train(epoch):
             #   epoch, batch_idx * len(data), len(train_loader.dataset),
             #   100. * batch_idx / len(train_loader), loss.data.item(), KL_loss_fake.data.item()))
             fake = G(fixed_noise.cuda(), fixed_label.cuda())
-            vutils.save_image(fake.data, '%s/SVHNcDCgan_samples_epoch_%03d.png' % (args.outf, epoch), normalize=True)
+            vutils.save_image(fake.data, '%s/MNISTcDCgan_samples_epoch_%03d.png' % (args.outf, epoch), normalize=True)
 
 
 def test(epoch):
