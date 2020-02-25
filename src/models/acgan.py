@@ -11,10 +11,10 @@ def weights_init(m):
         m.bias.data.fill_(0)
 
 
-class netG(nn.Module):
+class acnetG(nn.Module):
 
     def __init__(self, nz, ngf, nc):
-        super(netG, self).__init__()
+        super(acnetG, self).__init__()
         self.ReLU = nn.ReLU(True)
         self.Tanh = nn.Tanh()
         self.conv1 = nn.ConvTranspose2d(nz, ngf * 8, 4, 1, 0, bias=False)
@@ -55,10 +55,10 @@ class netG(nn.Module):
         return output
 
 
-class netD(nn.Module):
+class acnetD(nn.Module):
 
     def __init__(self, ndf, nc, nb_label):
-        super(netD, self).__init__()
+        super(acnetD, self).__init__()
         self.LeakyReLU = nn.LeakyReLU(0.2, inplace=True)
         self.conv1 = nn.Conv2d(nc, ndf, 4, 2, 1, bias=False)
         self.conv2 = nn.Conv2d(ndf, ndf * 2, 4, 2, 1, bias=False)
