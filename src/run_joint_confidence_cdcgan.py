@@ -24,6 +24,7 @@ os.environ["CUDA_VISIBLE_DEVICES"] = "5"
 # Training settings
 parser = argparse.ArgumentParser(description='Training code - joint confidence')
 parser.add_argument('--batch-size', type=int, default=128, help='input batch size for training')
+parser.add_argument('--save-interval', type=int, default=3, help='save interval')
 parser.add_argument('--epochs', type=int, default=100, help='number of epochs to train')
 parser.add_argument('--lr', type=float, default=0.0002, help='learning rate')
 parser.add_argument('--no-cuda', action='store_true', default=False, help='disables CUDA training')
@@ -92,7 +93,7 @@ real_label = 1
 fake_label = 0
 criterion = nn.BCELoss()
 nz = 100
-fixed_noise = torch.FloatTensor(64, nz, 1, 1).normal_(0, 1)
+#fixed_noise = torch.FloatTensor(64, nz, 1, 1).normal_(0, 1)
 
 # fixed_noise = torch.randn((128, 100)).view(-1, 100, 1, 1)
 if args.cuda:
@@ -100,8 +101,8 @@ if args.cuda:
     D.cuda()
     G.cuda()
     criterion.cuda()
-    fixed_noise = fixed_noise.cuda()
-fixed_noise = Variable(fixed_noise)
+    #fixed_noise = fixed_noise.cuda()
+#fixed_noise = Variable(fixed_noise)
 
 print('Setup optimizer')
 lr = 0.0002
@@ -112,24 +113,16 @@ D_optimizer = optim.Adam(D.parameters(), lr=lr, betas=(0.5, 0.999))
 
 decreasing_lr = list(map(int, args.decreasing_lr.split(',')))
 
-onehot = torch.zeros(10, 10).cuda()
-onehot = onehot.scatter_(1, torch.cuda.LongTensor([0, 1, 2, 3, 4, 5, 6, 7, 8, 9]).view(10, 1), 1).view(10, 10, 1, 1)
 img_size = 32
 num_labels = 10
-fill = torch.zeros([num_labels, num_labels, img_size , img_size ]).cuda()
-for i in range(num_labels):
-    fill[i, i, :, :] = 1
-fill = fill.cuda()
 # os.environ["CUDA_LAUNCH_BLOCKING"]="1"
 
 # Binary Cross Entropy loss
 BCE_loss = nn.BCELoss()
 # fixed_noise = torch.FloatTensor(64, nz, 1, 1).normal_(0, 1)
-fixed_noise = torch.randn((64, 100)).view(-1, 100, 1, 1)
-y_ = (torch.rand(64, 1) * num_labels).type(torch.LongTensor).squeeze()
-fixed_label = onehot[y_]
-fixed_label_base = 0
-one_hot_zero = 0
+fixed_noise = torch.randn((64, 100)).view(-1, 100, 1, 1).cuda()
+
+fixed_label = 0
 first = True
 
 
@@ -140,25 +133,21 @@ def train(epoch):
     trg = 0
     trd = 0
 
-    global first
-    global fixed_noise
-    global fixed_label
-    global fixed_label_base
-    global one_hot_zero
     for batch_idx, (data, y_labels) in enumerate(train_loader):
-        temp = fixed_label_base
-        if not first:
-            assert temp.sum() == fixed_label_base.sum()
-            assert temp.sum() != 0
-            (one_hot_zero == fixed_label[0,:,:,:]).sum()>0
+        global first
+        global fixed_noise
+        global fixed_label
 
         if first:
+            global first
+            global fixed_noise
+            global fixed_label
+
             first = False
+            fixed_label = y_labels.squeeze()[:64].type(torch.cuda.LongTensor)
+            assert fixed_label.shape == (64,)
             print( "saving fixed_label!")
-            fixed_label_base = y_labels.squeeze()[:64]
-            fixed_label = onehot[y_labels[:64].squeeze().tolist()]
-            vutils.save_image(data[:64], '%s/realReference%03d.png' % (args.outf, epoch), normalize=True)
-            one_hot_zero = fixed_label[0, :, :, :]
+            vutils.save_image(data[:64], '{}/{}realReference{}.png'.format(args.outf,args.dataset, epoch), normalize=True)
         uniform_dist = torch.Tensor(data.size(0), args.num_classes).fill_((1. / args.num_classes)).cuda()
         x_ = data.cuda()
         assert x_[0, :, :, :].shape == (3, 32, 32)
@@ -172,31 +161,17 @@ def train(epoch):
         y_fake_ = torch.zeros(mini_batch)
         y_real_, y_fake_ = Variable(y_real_.cuda()), Variable(y_fake_.cuda())
 
-        y_fill_ = fill[y_.squeeze().tolist()]
-        # y_fill_ = fill[y_]
 
-        assert y_fill_[0, y_.squeeze().tolist()[0], :, :].sum() == (img_size ) ** 2
-        assert y_fill_.sum() == (img_size ) ** 2 * mini_batch
-
-        x_, y_fill_ = Variable(x_.cuda()), Variable(y_fill_.cuda())
-
-        D_result = D(x_, y_fill_).squeeze()
+        D_result = D(x_, y_).squeeze()
         D_real_loss = BCE_loss(D_result, y_real_)
 
-        z_ = torch.randn((mini_batch, 100)).view(-1, 100, 1, 1)
-        y_ = (torch.rand(mini_batch, 1) * num_labels).type(torch.LongTensor).squeeze()
-        y_label_ = onehot[y_]
-        y_fill_ = fill[y_]
-        assert y_label_[0, y_[0]] == 1
-        assert y_label_.shape == (mini_batch, 10, 1, 1)
+        z_ = torch.randn((mini_batch, 100)).view(-1, 100, 1, 1).cuda()
+        y_ = (torch.rand(mini_batch, 1) * num_labels).type(torch.cuda.LongTensor).squeeze()
 
-        assert y_fill_[0, y_[0], :, :].sum() == (img_size ) ** 2
-        assert y_fill_.sum() == (img_size ) ** 2 * mini_batch
+        z_, y_ = Variable(z_.cuda()), Variable(y_.cuda())
 
-        z_, y_label_, y_fill_ = Variable(z_.cuda()), Variable(y_label_.cuda()), Variable(y_fill_.cuda())
-
-        G_result = G(z_, y_label_)
-        D_result = D(G_result, y_fill_).squeeze()
+        G_result = G(z_, y_.squeeze())
+        D_result = D(G_result, y_).squeeze()
 
         D_fake_loss = BCE_loss(D_result, y_fake_)
         D_fake_score = D_result.data.mean()
@@ -213,21 +188,14 @@ def train(epoch):
         # train generator G
         G.zero_grad()
 
-        z_ = torch.randn((mini_batch, 100)).view(-1, 100, 1, 1)
-        y_ = (torch.rand(mini_batch, 1) * num_labels).type(torch.LongTensor).squeeze()
-        y_label_ = onehot[y_]
-        y_fill_ = fill[y_]
+        z_ = torch.randn((mini_batch, 100)).view(-1, 100, 1, 1).cuda()
+        y_ = (torch.rand(mini_batch, 1) * num_labels).type(torch.cuda.LongTensor).squeeze()
 
-        z_, y_label_, y_fill_ = Variable(z_.cuda()), Variable(y_label_.cuda()), Variable(y_fill_.cuda())
+        z_, y_ = Variable(z_.cuda()), Variable(y_.cuda())
 
-        assert y_label_[0, y_[0]] == 1
-        assert y_label_.shape == (mini_batch, 10, 1, 1)
 
-        assert y_fill_[0, y_[0], :, :].sum() == (img_size ) ** 2
-        assert y_fill_.sum() == (img_size ) ** 2 * mini_batch
-
-        G_result = G(z_, y_label_)
-        D_result = D(G_result, y_fill_).squeeze()
+        G_result = G(z_, y_.squeeze())
+        D_result = D(G_result, y_).squeeze()
 
         G_train_loss = BCE_loss(D_result, y_real_)
 
@@ -238,7 +206,6 @@ def train(epoch):
         # generator_loss.backward()
         G_train_loss.backward()
         G_optimizer.step()
-        # G_losses.append(G_train_loss.item())
         ###########################
         # (3) Update classifier   #
         ###########################
@@ -253,18 +220,13 @@ def train(epoch):
         # KL divergence
 
         ####
-        z_ = torch.randn((data.shape[0], 100)).view(-1, 100, 1, 1).cuda()
-        y_ = (torch.rand(data.shape[0], 1) * num_labels).type(torch.LongTensor).squeeze().cuda()
-        y_label_ = onehot[y_]
-        y_fill_ = fill[y_]
+        z_ = torch.randn((mini_batch, 100)).view(-1, 100, 1, 1).cuda()
+        y_ = (torch.rand(mini_batch, 1) * num_labels).type(torch.cuda.LongTensor).squeeze()
 
-        assert y_label_[0, y_[0]] == 1
-        assert y_label_.shape == (data.shape[0], 10, 1, 1)
+        z_, y_ = Variable(z_.cuda()), Variable(y_.cuda())
 
-        assert y_fill_[0, y_[0], :, :].sum() == (img_size ) ** 2
-        assert y_fill_.sum() == (img_size ) ** 2 * data.shape[0]
 
-        G_result = G(z_, y_label_)
+        G_result = G(z_, y_.squeeze())
         # !!!#D_result = D(G_result, y_fill_).squeeze()
 
         ####
@@ -287,8 +249,8 @@ def train(epoch):
             # print('Classification Train Epoch: {} [{}/{} ({:.0f}%)]\tLoss: {:.6f}, KL fake Loss: {:.6f}'.format(
             #   epoch, batch_idx * len(data), len(train_loader.dataset),
             #   100. * batch_idx / len(train_loader), loss.data.item(), KL_loss_fake.data.item()))
-            fake = G(fixed_noise.cuda(), fixed_label.cuda())
-            vutils.save_image(fake.data, '%s/MNISTcDCgan_samples_epoch_%03d.png' % (args.outf, epoch), normalize=True)
+            fake = G(fixed_noise, fixed_label)
+            vutils.save_image(fake.data, '{}/{}CDCgan_samples_epoch_{}.png'.format(args.outf,args.dataset, epoch), normalize=True)
 
 
 def test(epoch):
