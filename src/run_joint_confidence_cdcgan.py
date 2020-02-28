@@ -31,7 +31,7 @@ parser.add_argument('--no-cuda', action='store_true', default=False, help='disab
 parser.add_argument('--seed', type=int, default=1, help='random seed')
 parser.add_argument('--log-interval', type=int, default=100,
                     help='how many batches to wait before logging training status')
-parser.add_argument('--dataset', default='mnist', help='mnist | cifar10 | svhn')
+parser.add_argument('--dataset', default='cifar10', help='mnist | cifar10 | svhn')
 parser.add_argument('--dataroot', required=True, help='path to dataset')
 parser.add_argument('--imageSize', type=int, default=32, help='the height / width of the input image to network')
 parser.add_argument('--outf', default='.', help='folder to output images and model checkpoints')
@@ -147,7 +147,7 @@ def train(epoch):
             fixed_label = y_labels.squeeze()[:64].type(torch.cuda.LongTensor)
             assert fixed_label.shape == (64,)
             print( "saving fixed_label!")
-            vutils.save_image(data[:64], '{}/{}realReference{}.png'.format(args.outf,args.dataset, epoch), normalize=True)
+            vutils.save_image(data[:64], '{}/{}jointConfidencerealReference{}.png'.format(args.outf,args.dataset, epoch), normalize=True)
         uniform_dist = torch.Tensor(data.size(0), args.num_classes).fill_((1. / args.num_classes)).cuda()
         x_ = data.cuda()
         assert x_[0, :, :, :].shape == (3, 32, 32)
@@ -178,10 +178,9 @@ def train(epoch):
 
         D_train_loss = D_real_loss + D_fake_loss
         trg += 1
-        if D_train_loss > .1:
-            trd += 1
-            D_train_loss.backward()
-            D_optimizer.step()
+        trd += 1
+        D_train_loss.backward()
+        D_optimizer.step()
 
         # D_losses.append(D_train_loss.item())
 
@@ -200,17 +199,15 @@ def train(epoch):
         G_train_loss = BCE_loss(D_result, y_real_)
 
         # minimize the true distribution
-        # KL_fake_output = F.log_softmax(model(G_result))
-        # errG_KL = F.kl_div(KL_fake_output, uniform_dist)*args.num_classes
-        # generator_loss = G_train_loss + args.beta*errG_KL # 12.0, .65, 0e-8
-        # generator_loss.backward()
-        G_train_loss.backward()
+        KL_fake_output = F.log_softmax(model(G_result))
+        errG_KL = F.kl_div(KL_fake_output, uniform_dist)*args.num_classes
+        generator_loss = G_train_loss + args.beta*errG_KL # 12.0, .65, 0e-8
+        generator_loss.backward()
         G_optimizer.step()
         ###########################
         # (3) Update classifier   #
         ###########################
         # cross entropy loss
-
         optimizer.zero_grad()
         x_ = Variable(x_)
 
@@ -242,15 +239,15 @@ def train(epoch):
             print(
                 "Epoch {} , Descriminator loss {:.6f} Generator loss {:.6f} traingenerator {:.6f} traindiscriminator {:.6f}".format(
                     epoch, D_train_loss, G_train_loss, trg, trd))
-            print('Classification Train Epoch: {} [{}/{} ({:.0f}%)]\tLoss: {:.6f}, KL fake Loss: {:.6f}'.format(
-                epoch, batch_idx * len(data), len(train_loader.dataset),
-                       100. * batch_idx / len(train_loader), loss.data.item(), KL_loss_fake.data.item()))
-
-            # print('Classification Train Epoch: {} [{}/{} ({:.0f}%)]\tLoss: {:.6f}, KL fake Loss: {:.6f}'.format(
+            #print('Classification Train Epoch: {} [{}/{} ({:.0f}%)]\tLoss: {:.6f}, KL fake Loss: {:.6f}'.format(
             #   epoch, batch_idx * len(data), len(train_loader.dataset),
-            #   100. * batch_idx / len(train_loader), loss.data.item(), KL_loss_fake.data.item()))
+            #          100. * batch_idx / len(train_loader), loss.data.item(), KL_loss_fake.data.item()))
+
+            print('Classification Train Epoch: {} [{}/{} ({:.0f}%)]\tLoss: {:.6f}, KL fake Loss: {:.6f}'.format(
+                   epoch, batch_idx * len(data), len(train_loader.dataset),
+                   100. * batch_idx / len(train_loader), loss.data.item(), KL_loss_fake.data.item()))
             fake = G(fixed_noise, fixed_label)
-            vutils.save_image(fake.data, '{}/{}CDCgan_samples_epoch_{}.png'.format(args.outf,args.dataset, epoch), normalize=True)
+            vutils.save_image(fake.data, '{}/{}jointConfidenceCDCgan_samples_epoch_{}.png'.format(args.outf,args.dataset, epoch), normalize=True)
 
 
 def test(epoch):

@@ -89,7 +89,7 @@ class generator(nn.Module): #https://machinelearningmastery.com/how-to-develop-a
 
 class discriminator(nn.Module):
     # initializers
-    def __init__(self, d=128,num_classes = 10):
+    def __init__(self, d=80,num_classes = 10):
         super(discriminator, self).__init__()
         self.d = d
         self.conv1 = nn.Conv2d(3+num_classes, d, 4, 2, 1)
