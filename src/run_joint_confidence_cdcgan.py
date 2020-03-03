@@ -2,8 +2,13 @@
 # This code is based on samples from pytorch #
 ##############################################
 # Writer: Kimin Lee 
-
 from __future__ import print_function
+
+import os
+
+os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"  # see issue #152
+os.environ["CUDA_VISIBLE_DEVICES"] = "2"
+
 import argparse
 import torch
 import torch.nn as nn
@@ -16,10 +21,6 @@ import models
 from torchvision import datasets, transforms
 from torch.autograd import Variable
 
-import os
-
-os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"  # see issue #152
-os.environ["CUDA_VISIBLE_DEVICES"] = "5"
 
 # Training settings
 parser = argparse.ArgumentParser(description='Training code - joint confidence')
@@ -39,12 +40,13 @@ parser.add_argument('--wd', type=float, default=0.0, help='weight decay')
 parser.add_argument('--droprate', type=float, default=0.1, help='learning rate decay')
 parser.add_argument('--decreasing_lr', default='60', help='decreasing strategy')
 parser.add_argument('--num_classes', type=int, default=10, help='the # of classes')
-parser.add_argument('--beta', type=float, default=1, help='penalty parameter for KL term')
+parser.add_argument('--beta1', type=float, default=20, help='penalty parameter for KL term')
+parser.add_argument('--beta2', type=float, default=.3, help='penalty parameter for KL term')
 
 args = parser.parse_args()
 
 if args.dataset == 'cifar10':
-    args.beta = 0.1
+#    args.beta = 0.1
     args.batch_size = 64
 
 print(args)
@@ -121,8 +123,9 @@ num_labels = 10
 BCE_loss = nn.BCELoss()
 # fixed_noise = torch.FloatTensor(64, nz, 1, 1).normal_(0, 1)
 fixed_noise = torch.randn((64, 100)).view(-1, 100, 1, 1).cuda()
-
+global fixed_label
 fixed_label = 0
+global first
 first = True
 
 
@@ -139,7 +142,6 @@ def train(epoch):
         global fixed_label
 
         if first:
-            global first
             global fixed_noise
             global fixed_label
 
@@ -174,23 +176,20 @@ def train(epoch):
         D_result = D(G_result, y_).squeeze()
 
         D_fake_loss = BCE_loss(D_result, y_fake_)
-        D_fake_score = D_result.data.mean()
+        #D_fake_score = D_result.data.mean()
 
         D_train_loss = D_real_loss + D_fake_loss
-        trg += 1
-        trd += 1
         D_train_loss.backward()
-        D_optimizer.step()
 
         # D_losses.append(D_train_loss.item())
 
         # train generator G
         G.zero_grad()
 
-        z_ = torch.randn((mini_batch, 100)).view(-1, 100, 1, 1).cuda()
-        y_ = (torch.rand(mini_batch, 1) * num_labels).type(torch.cuda.LongTensor).squeeze()
+        #z_ = torch.randn((mini_batch, 100)).view(-1, 100, 1, 1).cuda()
+        #y_ = (torch.rand(mini_batch, 1) * num_labels).type(torch.cuda.LongTensor).squeeze()
 
-        z_, y_ = Variable(z_.cuda()), Variable(y_.cuda())
+        #z_, y_ = Variable(z_.cuda()), Variable(y_.cuda())
 
 
         G_result = G(z_, y_.squeeze())
@@ -199,11 +198,11 @@ def train(epoch):
         G_train_loss = BCE_loss(D_result, y_real_)
 
         # minimize the true distribution
-        KL_fake_output = F.log_softmax(model(G_result))
+        KL_fake_output = F.log_softmax(model(G_result), dim=1)
         errG_KL = F.kl_div(KL_fake_output, uniform_dist)*args.num_classes
-        generator_loss = G_train_loss + args.beta*errG_KL # 12.0, .65, 0e-8
+        generator_loss = G_train_loss + args.beta1*errG_KL # 12.0, .65, 0e-8
         generator_loss.backward()
-        G_optimizer.step()
+
         ###########################
         # (3) Update classifier   #
         ###########################
@@ -211,28 +210,36 @@ def train(epoch):
         optimizer.zero_grad()
         x_ = Variable(x_)
 
-        output = F.log_softmax(model(x_))
+        output = F.log_softmax(model(x_), dim = 1)
         loss = F.nll_loss(output.cuda(), y_labels.type(torch.cuda.LongTensor).squeeze())
 
         # KL divergence
 
         ####
-        z_ = torch.randn((mini_batch, 100)).view(-1, 100, 1, 1).cuda()
-        y_ = (torch.rand(mini_batch, 1) * num_labels).type(torch.cuda.LongTensor).squeeze()
+#        z_ = torch.randn((mini_batch, 100)).view(-1, 100, 1, 1).cuda()
+#        y_ = (torch.rand(mini_batch, 1) * num_labels).type(torch.cuda.LongTensor).squeeze()
 
-        z_, y_ = Variable(z_.cuda()), Variable(y_.cuda())
+#        z_, y_ = Variable(z_.cuda()), Variable(y_.cuda())
 
 
         G_result = G(z_, y_.squeeze())
         # !!!#D_result = D(G_result, y_fill_).squeeze()
 
         ####
-        KL_fake_output = F.log_softmax(model(G_result))
+        KL_fake_output = F.log_softmax(model(G_result),dim = 1)
         KL_loss_fake = F.kl_div(KL_fake_output, uniform_dist) * args.num_classes
 
-        total_loss = loss + args.beta * KL_loss_fake
+        total_loss = loss + args.beta2 * KL_loss_fake
         # total_loss = loss
         total_loss.backward()
+
+        trg += 1
+        trd += 1
+
+        D_optimizer.step()
+
+        G_optimizer.step()
+
         optimizer.step()
 
         if batch_idx % args.log_interval == 0:
