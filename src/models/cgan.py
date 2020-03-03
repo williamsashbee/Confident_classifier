@@ -51,7 +51,7 @@ def cDiscriminator(n_gpu, nc, ndf):
 
 class generator(nn.Module): #https://machinelearningmastery.com/how-to-develop-an-auxiliary-classifier-gan-ac-gan-from-scratch-with-keras/
     # initializers
-    def __init__(self, d=126):
+    def __init__(self, d=100):
         super(generator, self).__init__()
         self.deconv1_1 = nn.ConvTranspose2d(110, d*4, 4, 1, 0)
         self.deconv1_1_bn = nn.BatchNorm2d(d*4)
@@ -81,7 +81,7 @@ class generator(nn.Module): #https://machinelearningmastery.com/how-to-develop-a
         x = F.relu(self.deconv3_1_bn(self.deconv3_1(x)))
 
         x = torch.cat([x, fill_list[1][label]], 1)
-        x = F.tanh(self.deconv4(x))
+        x = torch.tanh(self.deconv4(x))
         # x = F.relu(self.deconv4_bn(self.deconv4(x)))
         # x = F.tanh(self.deconv5(x))
 
@@ -117,7 +117,7 @@ class discriminator(nn.Module):
         x = F.leaky_relu(self.conv3_bn(self.conv3(x)), 0.2)
 
         x = torch.cat([x, fill_list[3][label.squeeze().tolist()]], 1)
-        x = F.sigmoid(self.conv4(x))
+        x = torch.sigmoid(self.conv4(x))
 
         return x
 
