@@ -30,7 +30,7 @@ parser.add_argument('--no-cuda', action='store_true', default=False, help='disab
 parser.add_argument('--seed', type=int, default=1, help='random seed')
 parser.add_argument('--log-interval', type=int, default=100,
                     help='how many batches to wait before logging training status')
-parser.add_argument('--dataset', default='svhn', help='cifar10 | svhn')
+parser.add_argument('--dataset', default='mnist', help='cifar10 | svhn')
 parser.add_argument('--dataroot', required=True, help='path to dataset')
 parser.add_argument('--imageSize', type=int, default=32, help='the height / width of the input image to network')
 parser.add_argument('--outf', default='.', help='folder to output images and model checkpoints')
@@ -57,7 +57,22 @@ if args.cuda:
 kwargs = {'num_workers': 1, 'pin_memory': True} if args.cuda else {}
 
 print('load data: ', args.dataset)
-train_loader, test_loader = data_loader.getTargetDataSet(args.dataset, args.batch_size, args.imageSize, args.dataroot)
+if args.dataset=='mnist':
+    transform = transforms.Compose([
+        transforms.Scale(32),
+        transforms.ToTensor(),
+        transforms.Lambda(lambda x: x.repeat(3, 1, 1)),
+        transforms.Normalize(mean=(0.5, 0.5, 0.5), std=(0.5, 0.5, 0.5))
+    ])
+    train_loader = torch.utils.data.DataLoader(
+        datasets.MNIST('data', train=True, download=True, transform=transform),
+        batch_size=128, shuffle=True)
+    test_loader = torch.utils.data.DataLoader(
+        datasets.MNIST('data', train=False, download=True, transform=transform),
+        batch_size=128, shuffle=True)
+else:
+    train_loader, test_loader = data_loader.getTargetDataSet(args.dataset, args.batch_size, args.imageSize, args.dataroot)
+
 
 transform = transforms.Compose([
     transforms.Scale(32),
@@ -86,16 +101,7 @@ real_label = 1
 fake_label = 0
 criterion = nn.BCELoss()
 nz = 100
-fixed_noise = torch.FloatTensor(64, nz, 1, 1).normal_(0, 1)
 
-# fixed_noise = torch.randn((128, 100)).view(-1, 100, 1, 1)
-if args.cuda:
-    model.cuda()
-    D.cuda()
-    G.cuda()
-    criterion.cuda()
-    fixed_noise = fixed_noise.cuda()
-fixed_noise = Variable(fixed_noise)
 
 print('Setup optimizer')
 lr = 0.0002
@@ -121,10 +127,16 @@ fill = fill.cuda()
 BCE_loss = nn.BCELoss()
 # fixed_noise = torch.FloatTensor(64, nz, 1, 1).normal_(0, 1)
 fixed_noise = torch.randn((64, 100)).view(-1, 100, 1, 1)
-y_ = (torch.rand(64, 1) * num_labels).type(torch.LongTensor).squeeze()
-fixed_label = onehot[y_]
+fixed_label = None
 
+if args.cuda:
+    model.cuda()
+    D.cuda()
+    G.cuda()
+    criterion.cuda()
+    fixed_noise = fixed_noise.cuda()
 
+first = True
 def train(epoch):
     model.train()
     # D_train_loss = 0
@@ -133,10 +145,21 @@ def train(epoch):
     trd = 0
     i = 0
 
-    for batch_idx, (data, y_labels) in enumerate(train_loader_mnist):
+    for batch_idx, (data, y_labels) in enumerate(train_loader):
         uniform_dist = torch.Tensor(data.size(0), args.num_classes).fill_((1. / args.num_classes)).cuda()
         x_ = data.cuda()
         assert x_[0, :, :, :].shape == (3, 32, 32)
+        global first
+        if first:
+            global fixed_noise
+            global fixed_label
+
+            first = False
+            fixed_label = onehot[y_labels.squeeze()[:64]]
+            print("saving fixed_label!")
+            vutils.save_image(data[:64],
+                              '{}/{}jointConfidencerealReference{}.png'.format(args.outf, args.dataset, epoch),
+                              normalize=True)
 
         # train discriminator D
         D.zero_grad()
@@ -262,7 +285,7 @@ def train(epoch):
             # print('Classification Train Epoch: {} [{}/{} ({:.0f}%)]\tLoss: {:.6f}, KL fake Loss: {:.6f}'.format(
             #   epoch, batch_idx * len(data), len(train_loader.dataset),
             #   100. * batch_idx / len(train_loader), loss.data.item(), KL_loss_fake.data.item()))
-            fake = G(fixed_noise.cuda(), fixed_label.cuda())
+            fake = G(fixed_noise.cuda(), fixed_label)
             vutils.save_image(fake.data, '%s/MNISTcDCgan_samples_epoch_%03d.png' % (args.outf, epoch), normalize=True)
 
 
