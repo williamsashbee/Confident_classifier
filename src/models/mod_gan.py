@@ -7,6 +7,15 @@ import os
 
 #!from models import *
 
+num_labels = 10
+img_size = 32
+num_layers = 6
+fill_list = [torch.zeros([num_labels, num_labels, img_size/int(2**x) , img_size/int(2**x) ]).cuda() for x in range(num_layers)]
+
+for j in range (num_layers):
+    for i in range(num_labels):
+        fill_list[j][i, i, :, :] = 1
+        assert fill_list[j][i, i, :, :].sum() == (img_size/2**j) ** 2
 
 def weights_init(m):
     classname = m.__class__.__name__
@@ -22,7 +31,7 @@ class _netD(nn.Module):
         self.ngpu = ngpu
         self.main = nn.Sequential(
             # input size. (nc) x 32 x 32
-            nn.Conv2d(nc, ndf * 2, 4, 2, 1, bias=False),
+            nn.Conv2d(nc+num_labels, ndf * 2, 4, 2, 1, bias=False),
             nn.LeakyReLU(0.2, inplace=True),
             # state size. (ndf*2) x 16 x 16
             nn.Conv2d(ndf * 2, ndf * 4, 4, 2, 1, bias=False),
@@ -37,7 +46,11 @@ class _netD(nn.Module):
             nn.Sigmoid()
         )
 
-    def forward(self, input):
+    def forward(self, input,labels):
+        y = fill_list[0][labels.squeeze().tolist()]
+        assert y.shape[1] == 10
+        input = torch.cat([input, y], 1)
+
         if isinstance(input.data, torch.cuda.FloatTensor) and self.ngpu > 1:
             output = nn.parallel.data_parallel(self.main, input, range(self.ngpu))
         else:
@@ -51,7 +64,7 @@ class _netG(nn.Module):
         self.ngpu = ngpu
         self.main = nn.Sequential(
             # input is Z, going into a convolution
-            nn.ConvTranspose2d(nz, ngf * 8, 4, 1, 0, bias=False),
+            nn.ConvTranspose2d(nz+num_labels, ngf * 8, 4, 1, 0, bias=False),
             nn.BatchNorm2d(ngf * 8),
             nn.ReLU(True),
             # state size. (ngf*8) x 4 x 4
@@ -68,19 +81,23 @@ class _netG(nn.Module):
             # state size. (nc) x 32 x 32
         )
 
-    def forward(self, input):
+    def forward(self, input,label):
+        y = fill_list[5][label.squeeze().tolist()]
+        assert y.shape[1] == 10
+        input = torch.cat([input, y], 1)
+
         if isinstance(input.data, torch.cuda.FloatTensor) and self.ngpu > 1:
             output = nn.parallel.data_parallel(self.main, input, range(self.ngpu))
         else:
             output = self.main(input)
         return output
 
-def Generator(n_gpu, nz, ngf, nc):
+def mod_Generator(n_gpu, nz, ngf, nc):
     model = _netG(n_gpu, nz, ngf, nc)
     model.apply(weights_init)
     return model
 
-def Discriminator(n_gpu, nc, ndf):
+def mod_Discriminator(n_gpu, nc, ndf):
     model = _netD(n_gpu, nc, ndf)
     model.apply(weights_init)
     return model
