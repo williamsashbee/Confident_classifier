@@ -79,48 +79,24 @@ else:
     train_loader, test_loader = data_loader.getTargetDataSet(args.dataset, args.batch_size, args.imageSize,
                                                              args.dataroot)
 
-print('Load model')
-model = models.vgg13()
-print(model)
+model = None
 
 print('load GAN')
-nz = 100
-G = models.cGenerator(1, nz, 64, 3)  # ngpu, nz, ngf, nc
-D = models.cDiscriminator(1, 3, 64)  # ngpu, nc, ndf
-G.weight_init(mean=0.0, std=0.02)
-D.weight_init(mean=0.0, std=0.02)
 
 # Initial setup for GAN
 real_label = 1
 fake_label = 0
-criterion = nn.BCELoss()
+criterion = None
 nz = 100
-#fixed_noise = torch.FloatTensor(64, nz, 1, 1).normal_(0, 1)
-
-# fixed_noise = torch.randn((128, 100)).view(-1, 100, 1, 1)
-if args.cuda:
-    model.cuda()
-    D.cuda()
-    G.cuda()
-    criterion.cuda()
-    #fixed_noise = fixed_noise.cuda()
-#fixed_noise = Variable(fixed_noise)
 
 print('Setup optimizer')
-lr = 0.0002
 batch_size = 128
-optimizer = optim.Adam(model.parameters(), lr=args.lr, weight_decay=args.wd)
-G_optimizer = optim.Adam(G.parameters(), lr=lr, betas=(0.5, 0.999))
-D_optimizer = optim.Adam(D.parameters(), lr=lr, betas=(0.5, 0.999))
 
 decreasing_lr = list(map(int, args.decreasing_lr.split(',')))
 
 img_size = 32
 num_labels = 10
-# os.environ["CUDA_LAUNCH_BLOCKING"]="1"
-
-# Binary Cross Entropy loss
-BCE_loss = nn.BCELoss()
+BCE_loss = None
 # fixed_noise = torch.FloatTensor(64, nz, 1, 1).normal_(0, 1)
 fixed_noise = torch.randn((64, 100)).view(-1, 100, 1, 1).cuda()
 global fixed_label
@@ -258,6 +234,7 @@ def train(epoch):
 
 
 def test(epoch):
+
     model.eval()
     test_loss = 0
     correct = 0
@@ -284,17 +261,43 @@ def test(epoch):
     print('\nTest set: Average loss: {:.4f}, Accuracy: {}/{} ({:.0f}%)\n'.format(
         test_loss, correct, total,
         100. * correct / total))
+while True:
+    print('Load model')
+    global model
+    model = models.vgg13()
+    print(model)
 
+    G = models.cGenerator(1, nz, 64, 3)  # ngpu, nz, ngf, nc
+    D = models.cDiscriminator(1, 3, 64)  # ngpu, nc, ndf
+    G.weight_init(mean=0.0, std=0.02)
+    D.weight_init(mean=0.0, std=0.02)
+    global BCE_loss
+    global criterion
 
-for epoch in range(1, args.epochs + 1):
-    train(epoch)
-    test(epoch)
-    if epoch in decreasing_lr:
-        G_optimizer.param_groups[0]['lr'] *= args.droprate
-        D_optimizer.param_groups[0]['lr'] *= args.droprate
-        optimizer.param_groups[0]['lr'] *= args.droprate
-    if epoch % 20 == 0:
-        # do checkpointing
-        torch.save(G.state_dict(), '%s/netG_epoch_%d.pth' % (args.outf, epoch))
-        torch.save(D.state_dict(), '%s/netD_epoch_%d.pth' % (args.outf, epoch))
-        torch.save(model.state_dict(), '%s/model_epoch_%d.pth' % (args.outf, epoch))
+    BCE_loss = nn.BCELoss()
+    criterion = nn.BCELoss()
+    if args.cuda:
+        model.cuda()
+        D.cuda()
+        G.cuda()
+        criterion.cuda()
+        BCE_loss.cuda()
+    optimizer = optim.Adam(model.parameters(), lr=args.lr, weight_decay=args.wd)
+    G_optimizer = optim.Adam(G.parameters(), lr=args.lr, betas=(0.5, 0.999))
+    D_optimizer = optim.Adam(D.parameters(), lr=args.lr, betas=(0.5, 0.999))
+
+    args.beta1 = 1.0
+    args.beta2 = 1.0
+
+    for epoch in range(1, args.epochs + 1):
+        train(epoch)
+        test(epoch)
+        if epoch in decreasing_lr:
+            G_optimizer.param_groups[0]['lr'] *= args.droprate
+            D_optimizer.param_groups[0]['lr'] *= args.droprate
+            optimizer.param_groups[0]['lr'] *= args.droprate
+        if epoch % 20 == 0:
+            # do checkpointing
+            torch.save(G.state_dict(), '%s/netG_epoch_%d.pth' % (args.outf, epoch))
+            torch.save(D.state_dict(), '%s/netD_epoch_%d.pth' % (args.outf, epoch))
+            torch.save(model.state_dict(), '%s/model_epoch_%d.pth' % (args.outf, epoch))
