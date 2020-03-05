@@ -15,7 +15,7 @@ import calculate_log as callog
 import models
 import math
 
-from torch.utils.serialization import load_lua
+#from torch.utils.serialization import load_lua
 from torchvision import datasets, transforms
 from torch.nn.parameter import Parameter
 from torch.autograd import Variable
@@ -51,7 +51,23 @@ model.load_state_dict(torch.load(args.pre_trained_net))
 print(model)
 
 print('load target data: ',args.dataset)
-_, test_loader = data_loader.getTargetDataSet(args.dataset, args.batch_size, args.imageSize, args.dataroot)
+if args.dataset == 'mnist':
+    transform = transforms.Compose([
+        transforms.Scale(32),
+        transforms.ToTensor(),
+        transforms.Lambda(lambda x: x.repeat(3, 1, 1)),
+        transforms.Normalize(mean=(0.5, 0.5, 0.5), std=(0.5, 0.5, 0.5))
+    ])
+
+    train_loader = torch.utils.data.DataLoader(
+        datasets.MNIST('data', train=True, download=True, transform=transform),
+        batch_size=128, shuffle=True)
+    test_loader = torch.utils.data.DataLoader(
+        datasets.MNIST('data', train=False, download=True, transform=transform),
+        batch_size=128, shuffle=True)
+    print("finished loading mnist")
+else:
+    _, test_loader = data_loader.getTargetDataSet(args.dataset, args.batch_size, args.imageSize, args.dataroot)
 
 print('load non target data: ',args.out_dataset)
 nt_test_loader = data_loader.getNonTargetDataSet(args.out_dataset, args.batch_size, args.imageSize, args.dataroot)
@@ -75,7 +91,7 @@ def generate_target():
 
         # compute the accuracy
         pred = batch_output.data.max(1)[1]
-        equal_flag = pred.eq(target.data).cpu()
+        equal_flag = pred.eq(target.data.type(torch.cuda.LongTensor).squeeze())
         correct += equal_flag.sum()
         for i in range(data.size(0)):
             # confidence score: max_y p(y|x)
