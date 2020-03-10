@@ -40,8 +40,8 @@ parser.add_argument('--wd', type=float, default=0.0, help='weight decay')
 parser.add_argument('--droprate', type=float, default=0.1, help='learning rate decay')
 parser.add_argument('--decreasing_lr', default='60', help='decreasing strategy')
 parser.add_argument('--num_classes', type=int, default=10, help='the # of classes')
-parser.add_argument('--beta1', type=float, default=20, help='penalty parameter for KL term')
-parser.add_argument('--beta2', type=float, default=.3, help='penalty parameter for KL term')
+parser.add_argument('--beta1', type=float, default=1.0, help='penalty parameter for KL term')
+parser.add_argument('--beta2', type=float, default=1.0, help='penalty parameter for KL term')
 
 args = parser.parse_args()
 
@@ -125,7 +125,7 @@ def train(epoch):
             fixed_label = y_labels.squeeze()[:64].type(torch.cuda.LongTensor)
             assert fixed_label.shape == (64,)
             print( "saving fixed_label!")
-            vutils.save_image(data[:64], '{}/{}jointConfidencerealReference{}.png'.format(args.outf,args.dataset, epoch), normalize=True)
+            vutils.save_image(data[:64], '%s/%s-%s-%s-%s_realReference.png'%(args.outf,"cdcgan",args.dataset,args.beta1,args.beta2), normalize=True)
         uniform_dist = torch.Tensor(data.size(0), args.num_classes).fill_((1. / args.num_classes)).cuda()
         x_ = data.cuda()
         assert x_[0, :, :, :].shape == (3, 32, 32)
@@ -156,7 +156,7 @@ def train(epoch):
 
         D_train_loss = D_real_loss + D_fake_loss
         D_train_loss.backward()
-
+        D_optimizer.step()
         # D_losses.append(D_train_loss.item())
 
         # train generator G
@@ -178,6 +178,8 @@ def train(epoch):
         errG_KL = F.kl_div(KL_fake_output, uniform_dist)*args.num_classes
         generator_loss = G_train_loss + args.beta1*errG_KL # 12.0, .65, 0e-8
         generator_loss.backward()
+
+        G_optimizer.step()
 
         ###########################
         # (3) Update classifier   #
@@ -209,14 +211,11 @@ def train(epoch):
         # total_loss = loss
         total_loss.backward()
 
+        optimizer.step()
+
         trg += 1
         trd += 1
 
-        D_optimizer.step()
-
-        G_optimizer.step()
-
-        optimizer.step()
 
         if batch_idx % args.log_interval == 0:
             print(
@@ -230,7 +229,7 @@ def train(epoch):
                    epoch, batch_idx * len(data), len(train_loader.dataset),
                    100. * batch_idx / len(train_loader), loss.data.item(), KL_loss_fake.data.item()))
             fake = G(fixed_noise, fixed_label)
-            vutils.save_image(fake.data, '{}/{}jointConfidenceCDCgan_samples_epoch_{}.png'.format(args.outf,args.dataset, epoch), normalize=True)
+            vutils.save_image(fake.data, '%s/%s-%s-%s-%s-_epoch_%03d.png'%(args.outf,"cdcgan",args.dataset,args.beta1,args.beta2, epoch), normalize=True)
 
 
 def test(epoch):
@@ -286,8 +285,6 @@ while True:
     G_optimizer = optim.Adam(G.parameters(), lr=args.lr, betas=(0.5, 0.999))
     D_optimizer = optim.Adam(D.parameters(), lr=args.lr, betas=(0.5, 0.999))
 
-    args.beta1 = 1.0
-    args.beta2 = 1.0
 
     for epoch in range(1, args.epochs + 1):
         train(epoch)
@@ -298,6 +295,12 @@ while True:
             optimizer.param_groups[0]['lr'] *= args.droprate
         if epoch % 20 == 0:
             # do checkpointing
-            torch.save(G.state_dict(), '%s/netG_epoch_%d.pth' % (args.outf, epoch))
-            torch.save(D.state_dict(), '%s/netD_epoch_%d.pth' % (args.outf, epoch))
-            torch.save(model.state_dict(), '%s/model_epoch_%d.pth' % (args.outf, epoch))
+
+            torch.save(G.state_dict(),
+                       '%s/%s-%s-%s-%s-_netG%03d.pth' % (args.outf, "cdcgan", args.dataset, args.beta1, args.beta2, epoch))
+            torch.save(D.state_dict(),
+                       '%s/%s-%s-%s-%s-_netD%03d.pth' % (args.outf, "cdcgan", args.dataset, args.beta1, args.beta2, epoch))
+            torch.save(model.state_dict(), '%s/%s-%s-%s-%s-model_%03d.pth' % (
+                args.outf, "cdcgan", args.dataset, args.beta1, args.beta2, epoch))
+            print('saving')
+    break
