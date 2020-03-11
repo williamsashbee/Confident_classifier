@@ -14,31 +14,34 @@ import time
 from scipy import misc
 
 def tpr95(dir_name):
-    #calculate the falsepositive error when tpr is 95%
-    cifar = np.loadtxt('%s/confidence_Base_In.txt'%dir_name, delimiter=',')
-    other = np.loadtxt('%s/confidence_Base_Out.txt'%dir_name, delimiter=',')
-    Y1 = other
-    X1 = cifar
-    end = np.max([np.max(X1), np.max(Y1)])
-    start = np.min([np.min(X1),np.min(Y1)])
-    gap = (end- start)/200000 # precision:200000
+    try:
+        #calculate the falsepositive error when tpr is 95%
+        cifar = np.loadtxt('%s/confidence_Base_In.txt'%dir_name, delimiter=',')
+        other = np.loadtxt('%s/confidence_Base_Out.txt'%dir_name, delimiter=',')
+        Y1 = other
+        X1 = cifar
+        end = np.max([np.max(X1), np.max(Y1)])
+        start = np.min([np.min(X1),np.min(Y1)])
+        gap = (end- start)/200000 # precision:200000
 
-    total = 0.0
-    fpr = 0.0
-    for delta in np.arange(start, end, gap):
-        tpr = np.sum(np.sum(X1 >= delta)) / np.float(len(X1))
-        error2 = np.sum(np.sum(Y1 > delta)) / np.float(len(Y1))
-        if tpr <= 0.96 and tpr >= 0.94:
-            fpr += error2
-            total += 1
-    if total == 0:
-        print('corner case')
-        fprBase = 1
-    else:
-        fprBase = fpr/total
+        total = 0.0
+        fpr = 0.0
+        for delta in np.arange(start, end, gap):
+            tpr = np.sum(np.sum(X1 >= delta)) / np.float(len(X1))
+            error2 = np.sum(np.sum(Y1 > delta)) / np.float(len(Y1))
+            if tpr <= 0.96 and tpr >= 0.94:
+                fpr += error2
+                total += 1
+        if total == 0:
+            print('corner case')
+            fprBase = 1
+        else:
+            fprBase = fpr/total
 
-    return fprBase
-
+        return fprBase
+    except:
+        print ('fpr exception, returning zero')
+        return 0.0
 
 def auroc(dir_name):
     #calculate the AUROC
@@ -149,3 +152,4 @@ def metric(dir_name):
     print("{:20}{:13.3f}%".format("AUPR In:",auprinBase*100))
     auproutBase = auprOut(dir_name)
     print("{:20}{:13.3f}%".format("AUPR Out:",auproutBase*100))
+    return (1.0-fprBase)*100.0,aurocBase*100.0,(1-errorBase)*100.0,auprinBase*100.0, auproutBase*100.0
