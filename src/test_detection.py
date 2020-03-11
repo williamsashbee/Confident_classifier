@@ -22,69 +22,72 @@ from torch.autograd import Variable
 from numpy.linalg import inv
 
 # Training settings
+
 parser = argparse.ArgumentParser(description='Test code - measure the detection peformance')
 parser.add_argument('--batch-size', type=int, default=128, help='batch size')
 parser.add_argument('--no-cuda', action='store_true', default=False, help='disables CUDA')
 parser.add_argument('--seed', type=int, default=1,help='random seed')
-parser.add_argument('--dataset', required=True, help='target dataset: cifar10 | svhn')
-parser.add_argument('--dataroot', required=True, help='path to dataset')
+parser.add_argument('--dataset', default = "", help='target dataset: cifar10 | svhn')
+parser.add_argument('--dataroot', default = "", help='path to dataset')
 parser.add_argument('--imageSize', type=int, default=32, help='the height / width of the input image to network')
 parser.add_argument('--outf', default='/home/rack/KM/2017_Codes/overconfidence/test/log_entropy', help='folder to output images and model checkpoints')
-parser.add_argument('--out_dataset', required=True, help='out-of-dist dataset: cifar10 | svhn | imagenet | lsun')
+parser.add_argument('--out_dataset', default= "", help='out-of-dist dataset: cifar10 | svhn | imagenet | lsun')
 parser.add_argument('--num_classes', type=int, default=10, help='number of classes (default: 10)')
 parser.add_argument('--pre_trained_net', default='', help="path to pre trained_net")
 
 args = parser.parse_args()
-print(args)
-args.cuda = not args.no_cuda and torch.cuda.is_available()
-print("Random Seed: ", args.seed)
-torch.manual_seed(args.seed)
+if len(args.out_dataset) > 0 :
 
-if args.cuda:
-    torch.cuda.manual_seed(args.seed)
+    print(args)
+    args.cuda = not args.no_cuda and torch.cuda.is_available()
+    print("Random Seed: ", args.seed)
+    torch.manual_seed(args.seed)
 
-kwargs = {'num_workers': 1, 'pin_memory': True} if args.cuda else {}
+    if args.cuda:
+        torch.cuda.manual_seed(args.seed)
 
-print('Load model')
-model = models.vgg13()
-model.load_state_dict(torch.load(args.pre_trained_net))
-print(model)
+    kwargs = {'num_workers': 1, 'pin_memory': True} if args.cuda else {}
 
-print('load target data: ',args.dataset)
-if args.dataset == 'mnist':
-    transform = transforms.Compose([
-        transforms.Scale(32),
-        transforms.ToTensor(),
-        transforms.Lambda(lambda x: x.repeat(3, 1, 1)),
-        transforms.Normalize(mean=(0.5, 0.5, 0.5), std=(0.5, 0.5, 0.5))
-    ])
+    print('Load model')
+    model = models.vgg13()
+    model.load_state_dict(torch.load(args.pre_trained_net))
+    print(model)
 
-    train_loader = torch.utils.data.DataLoader(
-        datasets.MNIST('data', train=True, download=True, transform=transform),
-        batch_size=128, shuffle=True)
-    test_loader = torch.utils.data.DataLoader(
-        datasets.MNIST('data', train=False, download=True, transform=transform),
-        batch_size=128, shuffle=True)
-    print("finished loading mnist")
-else:
-    _, test_loader = data_loader.getTargetDataSet(args.dataset, args.batch_size, args.imageSize, args.dataroot)
+    print('load target data: ',args.dataset)
+    if args.dataset == 'mnist':
+        transform = transforms.Compose([
+            transforms.Scale(32),
+            transforms.ToTensor(),
+            transforms.Lambda(lambda x: x.repeat(3, 1, 1)),
+            transforms.Normalize(mean=(0.5, 0.5, 0.5), std=(0.5, 0.5, 0.5))
+        ])
 
-print('load non target data: ',args.out_dataset)
-nt_test_loader = data_loader.getNonTargetDataSet(args.out_dataset, args.batch_size, args.imageSize, args.dataroot)
+        train_loader = torch.utils.data.DataLoader(
+            datasets.MNIST('data', train=True, download=True, transform=transform),
+            batch_size=128, shuffle=True)
+        test_loader = torch.utils.data.DataLoader(
+            datasets.MNIST('data', train=False, download=True, transform=transform),
+            batch_size=128, shuffle=True)
+        print("finished loading mnist")
+    else:
+        _, test_loader = data_loader.getTargetDataSet(args.dataset, args.batch_size, args.imageSize, args.dataroot)
 
-if args.cuda:
-    model.cuda()
+    print('load non target data: ',args.out_dataset)
+    nt_test_loader = data_loader.getNonTargetDataSet(args.out_dataset, args.batch_size, args.imageSize, args.dataroot)
 
-def generate_target():
+    if args.cuda:
+        model.cuda()
+
+def generate_target(model = None, outfile = None,cuda = True,test_loader = None, nt_test_loader = None):
     model.eval()
     correct = 0
     total = 0
-    f1 = open('%s/confidence_Base_In.txt'%args.outf, 'w')
+    f1 = open('%s/confidence_Base_In.txt'%outfile, 'w')
 
     for data, target in test_loader:
         total += data.size(0)
-        #vutils.save_image(data, '%s/target_samples.png'%args.outf, normalize=True)
-        if args.cuda:
+        #vutils.save_image(data, '%s/target_samples.png'%outfile, normalize=True)
+        if cuda:
             data, target = data.cuda(), target.cuda()
         data, target = Variable(data, volatile=True), Variable(target)
         batch_output = model(data)
@@ -102,14 +105,14 @@ def generate_target():
 
     print('\n Final Accuracy: {}/{} ({:.2f}%)\n'.format(correct, total, 100. * correct / total))
 
-def generate_non_target():
+def generate_non_target(model = None, outfile = None,cuda = True, test_loader = None, nt_test_loader = None):
     model.eval()
     total = 0
-    f2 = open('%s/confidence_Base_Out.txt'%args.outf, 'w')
+    f2 = open('%s/confidence_Base_Out.txt'%outfile, 'w')
 
     for data, target in nt_test_loader:
         total += data.size(0)
-        if args.cuda:
+        if cuda:
             data, target = data.cuda(), target.cuda()
         data, target = Variable(data, volatile=True), Variable(target)
         batch_output = model(data)
@@ -120,9 +123,10 @@ def generate_non_target():
             soft_out = torch.max(soft_out.data)
             f2.write("{}\n".format(soft_out))
 
-print('generate log from in-distribution data')
-generate_target()
-print('generate log  from out-of-distribution data')
-generate_non_target()
-print('calculate metrics')
-callog.metric(args.outf)
+if len( args.out_dataset) > 0:
+    print('generate log from in-distribution data')
+    generate_target()
+    print('generate log  from out-of-distribution data')
+    generate_non_target()
+    print('calculate metrics')
+    callog.metric(args.outf)

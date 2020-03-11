@@ -52,6 +52,8 @@ parser.add_argument('--decreasing_lr', default='60', help='decreasing strategy')
 parser.add_argument('--num_classes', type=int, default=10, help='the # of classes')
 parser.add_argument('--beta1', type=float, default=1.0, help='penalty parameter for KL term')
 parser.add_argument('--beta2', type=float, default=1.0, help='penalty parameter for KL term')
+parser.add_argument('--out_dataset', default= "svhn", help='out-of-dist dataset: cifar10 | svhn | imagenet | lsun')
+
 ####from test
 #parser.add_argument('--batch-size', type=int, default=128, help='batch size')
 #parser.add_argument('--seed', type=int, default=1, help='random seed')
@@ -59,7 +61,6 @@ parser.add_argument('--beta2', type=float, default=1.0, help='penalty parameter 
 #parser.add_argument('--imageSize', type=int, default=32, help='the height / width of the input image to network')
 #parser.add_argument('--outf', default='/home/rack/KM/2017_Codes/overconfidence/test/log_entropy',
 #                    help='folder to output images and model checkpoints')
-parser.add_argument('--out_dataset', default='svhn', help='out-of-dist dataset: cifar10 | svhn | imagenet | lsun')
 #parser.add_argument('--num_classes', type=int, default=10, help='number of classes (default: 10)')
 parser.add_argument('--pre_trained_net', default='', help="path to pre trained_net")
 
@@ -99,6 +100,7 @@ if args.dataset == 'mnist':
 else:
     train_loader, test_loader = data_loader.getTargetDataSet(args.dataset, args.batch_size, args.imageSize,
                                                              args.dataroot)
+nt_test_loader = data_loader.getNonTargetDataSet(args.out_dataset, args.batch_size, args.imageSize, args.dataroot)
 
 model = None
 
@@ -300,61 +302,11 @@ def test(epoch):
         test_loss, correct, total,
         100. * correct / total))
 
-
-
-
-
-
-
-
-def generate_target():
-    model.eval()
-    correct = 0
-    total = 0
-    f1 = open('%s/confidence_Base_In.txt' % args.outf, 'w')
-
-    for data, target in test_loader:
-        total += data.size(0)
-        # vutils.save_image(data, '%s/target_samples.png'%args.outf, normalize=True)
-        if args.cuda:
-            data, target = data.cuda(), target.cuda()
-        data, target = Variable(data, volatile=True), Variable(target)
-        batch_output = model(data)
-
-        # compute the accuracy
-        pred = batch_output.data.max(1)[1]
-        equal_flag = pred.eq(target.data.type(torch.cuda.LongTensor).squeeze())
-        correct += equal_flag.sum()
-        for i in range(data.size(0)):
-            # confidence score: max_y p(y|x)
-            output = batch_output[i].view(1, -1)
-            soft_out = F.softmax(output)
-            soft_out = torch.max(soft_out.data)
-            f1.write("{}\n".format(soft_out))
-
-    print('\n Final Accuracy: {}/{} ({:.2f}%)\n'.format(correct, total, 100. * correct / total))
-
-
-def generate_non_target():
-    model.eval()
-    total = 0
-    f2 = open('%s/confidence_Base_Out.txt' % args.outf, 'w')
-
-    for data, target in nt_test_loader:
-        total += data.size(0)
-        if args.cuda:
-            data, target = data.cuda(), target.cuda()
-        data, target = Variable(data, volatile=True), Variable(target)
-        batch_output = model(data)
-        for i in range(data.size(0)):
-            # confidence score: max_y p(y|x)
-            output = batch_output[i].view(1, -1)
-            soft_out = F.softmax(output)
-            soft_out = torch.max(soft_out.data)
-            f2.write("{}\n".format(soft_out))
-
 maxDict = {'fpr':0.0,'auroc':0.0,'error':0.0,'auprin':0.0, 'auprout':0.0}
 import random
+from test_detection import generate_non_target
+from test_detection import generate_target
+badBetas = open('%s/badBetas.txt'%args.outf, 'w')
 while True:
     losscounter = 0
 
@@ -393,6 +345,8 @@ while True:
             losscounter = 0
         if losscounter>5:
             print ('losscounter indicates these hyperaparameters are broken, breaking out of this set of parameters.',args.beta1,args.beta2)
+            badBetas.write(str(args.beta1)+','+str(args.beta2)+'\n')
+            badBetas.flush()
             break #trying to avoid wasting too many epochs on a broken set of hyperparameters
         test(epoch)
         if epoch in decreasing_lr:
@@ -413,48 +367,57 @@ while True:
             torch.save(model.state_dict(), modelName)
             print('saving')
             print('generate log from in-distribution data')
-            generate_target()
+            generate_target(model = model,outfile = args.outf,cuda = args.cuda,test_loader = test_loader, nt_test_loader = nt_test_loader)
             print('generate log  from out-of-distribution data')
-            generate_non_target()
+            generate_non_target(model = model,outfile = args.outf,cuda = args.cuda,test_loader = test_loader, nt_test_loader = nt_test_loader)
             print('calculate metrics')
             fpr,auroc, error,auprin, auprout = callog.metric(args.outf)
-            print('Load model')
 
-            if fpr >maxDict['fpr']:
+            if fpr >maxDict['fpr'] and fpr <99:
                 maxDict['fpr'] = fpr
                 modelName = '%s/%s-%s-%s-%.3f-%s-%s.pth' % (
                 args.outf, "cdcgan", args.dataset,"fpr", fpr, args.beta1, args.beta2)
                 torch.save(model.state_dict(), modelName)
                 print(modelName, "saved")
-            if auroc >maxDict['auroc']:
+            if auroc >maxDict['auroc'] and auroc <99:
                 maxDict['auroc'] = auroc
                 modelName = '%s/%s-%s-%s-%.3f-%s-%s.pth' % (
                 args.outf, "cdcgan", args.dataset,"auroc", auroc, args.beta1, args.beta2)
                 torch.save(model.state_dict(), modelName)
                 print(modelName, "saved")
 
-            if error >maxDict['error']:
+            if error >maxDict['error']and error <99:
                 maxDict['error'] = error
                 modelName = '%s/%s-%s-%s-%.3f-%s-%s.pth' % (
                 args.outf, "cdcgan", args.dataset,"error", error, args.beta1, args.beta2)
                 torch.save(model.state_dict(), modelName)
                 print(modelName, "saved")
 
-            if auprin >maxDict['auprin']:
+            if auprin >maxDict['auprin']and auprin <99:
                 maxDict['auprin'] = auprin
                 modelName = '%s/%s-%s-%s-%.3f-%s-%s.pth' % (
                 args.outf, "cdcgan", args.dataset,"auprin", auprin, args.beta1, args.beta2)
                 torch.save(model.state_dict(), modelName)
                 print(modelName, "saved")
 
-            if auprout >maxDict['auprout']:
+            if auprout >maxDict['auprout']and auprout <99:
                 maxDict['auprout'] = auprout
                 modelName = '%s/%s-%s-%s-%.3f-%s-%s.pth' % (
                 args.outf, "cdcgan", args.dataset,"auprout", auprout, args.beta1, args.beta2)
                 torch.save(model.state_dict(), modelName)
                 print(modelName, "saved")
-
-
+            if fpr < .1 or auprout < .1 or auprin < .1 or auroc <.1 or error < .1:
+                print('saving error model for debugging')
+                modelName = '%s/%s-%s-%s-%s-%s-%s-%s-%s-%s-%.3f-%.3f.pth' % (
+                    args.outf, "cdcgan", args.dataset, "debug", fpr,auroc,error, auprin,auprout, epoch, args.beta1, args.beta2)
+                torch.save(model.state_dict(), modelName)
+                print(modelName, "saved")
+            if fpr >= 99 or auprout >= 99 or auprin >= 99 or auroc >=99 or error >= 99:
+                print('saving error model for debugging')
+                modelName = '%s/%s-%s-%s-%s-%s-%s-%s-%s-%s-%.3f-%.3f.pth' % (
+                    args.outf, "cdcgan", args.dataset, "debug", fpr,auroc,error, auprin,auprout, epoch, args.beta1, args.beta2)
+                torch.save(model.state_dict(), modelName)
+                print(modelName, "saved")
 
 
 

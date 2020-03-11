@@ -44,101 +44,115 @@ def tpr95(dir_name):
         return 0.0
 
 def auroc(dir_name):
-    #calculate the AUROC
-    f1 = open('%s/Update_Base_ROC_tpr.txt'%dir_name, 'w')
-    f2 = open('%s/Update_Base_ROC_fpr.txt'%dir_name, 'w')
+    try:
+        #calculate the AUROC
+        f1 = open('%s/Update_Base_ROC_tpr.txt'%dir_name, 'w')
+        f2 = open('%s/Update_Base_ROC_fpr.txt'%dir_name, 'w')
 
-    cifar = np.loadtxt('%s/confidence_Base_In.txt'%dir_name, delimiter=',')
-    other = np.loadtxt('%s/confidence_Base_Out.txt'%dir_name, delimiter=',')
-    Y1 = other
-    X1 = cifar
-    end = np.max([np.max(X1), np.max(Y1)])
-    start = np.min([np.min(X1),np.min(Y1)])
-    gap = (end- start)/200000
+        cifar = np.loadtxt('%s/confidence_Base_In.txt'%dir_name, delimiter=',')
+        other = np.loadtxt('%s/confidence_Base_Out.txt'%dir_name, delimiter=',')
+        Y1 = other
+        X1 = cifar
+        end = np.max([np.max(X1), np.max(Y1)])
+        start = np.min([np.min(X1),np.min(Y1)])
+        gap = (end- start)/200000
 
-    aurocBase = 0.0
-    fprTemp = 1.0
-    for delta in np.arange(start, end, gap):
-        tpr = np.sum(np.sum(X1 >= delta)) / np.float(len(X1))
-        fpr = np.sum(np.sum(Y1 > delta)) / np.float(len(Y1))
-        f1.write("{}\n".format(tpr))
-        f2.write("{}\n".format(fpr))
-        aurocBase += (-fpr+fprTemp)*tpr
-        fprTemp = fpr
+        aurocBase = 0.0
+        fprTemp = 1.0
+        for delta in np.arange(start, end, gap):
+            tpr = np.sum(np.sum(X1 >= delta)) / np.float(len(X1))
+            fpr = np.sum(np.sum(Y1 > delta)) / np.float(len(Y1))
+            f1.write("{}\n".format(tpr))
+            f2.write("{}\n".format(fpr))
+            aurocBase += (-fpr+fprTemp)*tpr
+            fprTemp = fpr
 
-    return aurocBase
+        return aurocBase
+    except:
+        print('auroc exception')
+        return 0.0
 
 def auprIn(dir_name):
     #calculate the AUPR
 
-    cifar = np.loadtxt('%s/confidence_Base_In.txt'%dir_name, delimiter=',')
-    other = np.loadtxt('%s/confidence_Base_Out.txt'%dir_name, delimiter=',')
-    precisionVec = []
-    recallVec = []
-    Y1 = other
-    X1 = cifar
-    end = np.max([np.max(X1), np.max(Y1)])
-    start = np.min([np.min(X1),np.min(Y1)])
-    gap = (end- start)/200000
+    try:
+        cifar = np.loadtxt('%s/confidence_Base_In.txt'%dir_name, delimiter=',')
+        other = np.loadtxt('%s/confidence_Base_Out.txt'%dir_name, delimiter=',')
+        precisionVec = []
+        recallVec = []
+        Y1 = other
+        X1 = cifar
+        end = np.max([np.max(X1), np.max(Y1)])
+        start = np.min([np.min(X1),np.min(Y1)])
+        gap = (end- start)/200000
 
-    auprBase = 0.0
-    recallTemp = 1.0
-    for delta in np.arange(start, end, gap):
-        tp = np.sum(np.sum(X1 >= delta)) / np.float(len(X1))
-        fp = np.sum(np.sum(Y1 >= delta)) / np.float(len(Y1))
-        if tp + fp == 0: continue
-        precision = tp / (tp + fp)
-        recall = tp
-        precisionVec.append(precision)
-        recallVec.append(recall)
-        auprBase += (recallTemp-recall)*precision
-        recallTemp = recall
-    auprBase += recall * precision
+        auprBase = 0.0
+        recallTemp = 1.0
+        for delta in np.arange(start, end, gap):
+            tp = np.sum(np.sum(X1 >= delta)) / np.float(len(X1))
+            fp = np.sum(np.sum(Y1 >= delta)) / np.float(len(Y1))
+            if tp + fp == 0: continue
+            precision = tp / (tp + fp)
+            recall = tp
+            precisionVec.append(precision)
+            recallVec.append(recall)
+            auprBase += (recallTemp-recall)*precision
+            recallTemp = recall
+        auprBase += recall * precision
 
-    return auprBase
-
+        return auprBase
+    except:
+        print('aupr in exception')
+        return 0.0
 def auprOut(dir_name):
-    #calculate the AUPR
-    cifar = np.loadtxt('%s/confidence_Base_In.txt'%dir_name, delimiter=',')
-    other = np.loadtxt('%s/confidence_Base_Out.txt'%dir_name, delimiter=',')
-    Y1 = other
-    X1 = cifar
-    end = np.max([np.max(X1), np.max(Y1)])
-    start = np.min([np.min(X1),np.min(Y1)])
-    gap = (end- start)/200000
+    try:
+        #calculate the AUPR
+        cifar = np.loadtxt('%s/confidence_Base_In.txt'%dir_name, delimiter=',')
+        other = np.loadtxt('%s/confidence_Base_Out.txt'%dir_name, delimiter=',')
+        Y1 = other
+        X1 = cifar
+        end = np.max([np.max(X1), np.max(Y1)])
+        start = np.min([np.min(X1),np.min(Y1)])
+        gap = (end- start)/200000
 
-    auprBase = 0.0
-    recallTemp = 1.0
-    for delta in np.arange(end, start, -gap):
-        fp = np.sum(np.sum(X1 < delta)) / np.float(len(X1))
-        tp = np.sum(np.sum(Y1 < delta)) / np.float(len(Y1))
-        if tp + fp == 0: break
-        precision = tp / (tp + fp)
-        recall = tp
-        auprBase += (recallTemp-recall)*precision
-        recallTemp = recall
-    auprBase += recall * precision
+        auprBase = 0.0
+        recallTemp = 1.0
+        for delta in np.arange(end, start, -gap):
+            fp = np.sum(np.sum(X1 < delta)) / np.float(len(X1))
+            tp = np.sum(np.sum(Y1 < delta)) / np.float(len(Y1))
+            if tp + fp == 0: break
+            precision = tp / (tp + fp)
+            recall = tp
+            auprBase += (recallTemp-recall)*precision
+            recallTemp = recall
+        auprBase += recall * precision
 
-    return auprBase
+        return auprBase
+    except:
+        print('aupr out exception')
+        return 0.0
 
 def detection(dir_name):
     #calculate the minimum detection error
+    try:
+        cifar = np.loadtxt('%s/confidence_Base_In.txt'%dir_name, delimiter=',')
+        other = np.loadtxt('%s/confidence_Base_Out.txt'%dir_name, delimiter=',')
+        Y1 = other
+        X1 = cifar
+        end = np.max([np.max(X1), np.max(Y1)])
+        start = np.min([np.min(X1),np.min(Y1)])
+        gap = (end- start)/200000
 
-    cifar = np.loadtxt('%s/confidence_Base_In.txt'%dir_name, delimiter=',')
-    other = np.loadtxt('%s/confidence_Base_Out.txt'%dir_name, delimiter=',')
-    Y1 = other
-    X1 = cifar
-    end = np.max([np.max(X1), np.max(Y1)])
-    start = np.min([np.min(X1),np.min(Y1)])
-    gap = (end- start)/200000
+        errorBase = 1.0
+        for delta in np.arange(start, end, gap):
+            tpr = np.sum(np.sum(X1 < delta)) / np.float(len(X1))
+            error2 = np.sum(np.sum(Y1 > delta)) / np.float(len(Y1))
+            errorBase = np.minimum(errorBase, (tpr+error2)/2.0)
 
-    errorBase = 1.0
-    for delta in np.arange(start, end, gap):
-        tpr = np.sum(np.sum(X1 < delta)) / np.float(len(X1))
-        error2 = np.sum(np.sum(Y1 > delta)) / np.float(len(Y1))
-        errorBase = np.minimum(errorBase, (tpr+error2)/2.0)
-
-    return errorBase
+        return errorBase
+    except:
+        print('error/detection exception')
+        return 0.0
 
 def metric(dir_name):
     print("{:>34}".format("Performance of Baseline detector"))
