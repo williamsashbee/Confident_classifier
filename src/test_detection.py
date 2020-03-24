@@ -21,22 +21,24 @@ from torch.nn.parameter import Parameter
 from torch.autograd import Variable
 from numpy.linalg import inv
 
-# Training settings
 
-parser = argparse.ArgumentParser(description='Test code - measure the detection peformance')
-parser.add_argument('--batch-size', type=int, default=128, help='batch size')
-parser.add_argument('--no-cuda', action='store_true', default=False, help='disables CUDA')
-parser.add_argument('--seed', type=int, default=1,help='random seed')
-parser.add_argument('--dataset', default = "", help='target dataset: cifar10 | svhn')
-parser.add_argument('--dataroot', default = "", help='path to dataset')
-parser.add_argument('--imageSize', type=int, default=32, help='the height / width of the input image to network')
-parser.add_argument('--outf', default='/home/rack/KM/2017_Codes/overconfidence/test/log_entropy', help='folder to output images and model checkpoints')
-parser.add_argument('--out_dataset', default= "", help='out-of-dist dataset: cifar10 | svhn | imagenet | lsun')
-parser.add_argument('--num_classes', type=int, default=10, help='number of classes (default: 10)')
-parser.add_argument('--pre_trained_net', default='', help="path to pre trained_net")
+if False:
+    # Training settings
 
-args = parser.parse_args()
-if len(args.out_dataset) > 0 :
+    parser = argparse.ArgumentParser(description='Test code - measure the detection peformance')
+    parser.add_argument('--batch-size', type=int, default=128, help='batch size')
+    parser.add_argument('--no-cuda', action='store_true', default=False, help='disables CUDA')
+    parser.add_argument('--seed', type=int, default=1, help='random seed')
+    parser.add_argument('--dataset', default="", help='target dataset: cifar10 | svhn')
+    parser.add_argument('--dataroot', default="", help='path to dataset')
+    parser.add_argument('--imageSize', type=int, default=32, help='the height / width of the input image to network')
+    parser.add_argument('--outf', default='/home/rack/KM/2017_Codes/overconfidence/test/log_entropy',
+                        help='folder to output images and model checkpoints')
+    parser.add_argument('--out_dataset', default="", help='out-of-dist dataset: cifar10 | svhn | imagenet | lsun')
+    parser.add_argument('--num_classes', type=int, default=10, help='number of classes (default: 10)')
+    parser.add_argument('--pre_trained_net', default='', help="path to pre trained_net")
+
+    args = parser.parse_args()
 
     print(args)
     args.cuda = not args.no_cuda and torch.cuda.is_available()
@@ -75,10 +77,13 @@ if len(args.out_dataset) > 0 :
     print('load non target data: ',args.out_dataset)
     nt_test_loader = data_loader.getNonTargetDataSet(args.out_dataset, args.batch_size, args.imageSize, args.dataroot)
 
-    if args.cuda:
-        model.cuda()
+  #  if args.cuda:
+   #     model.cuda()
 
 def generate_target(model = None, outfile = None,cuda = True,test_loader = None, nt_test_loader = None):
+    if model == None:
+        print ('error')
+        return
     model.eval()
     correct = 0
     total = 0
@@ -106,6 +111,9 @@ def generate_target(model = None, outfile = None,cuda = True,test_loader = None,
     print('\n Final Accuracy: {}/{} ({:.2f}%)\n'.format(correct, total, 100. * correct / total))
 
 def generate_non_target(model = None, outfile = None,cuda = True, test_loader = None, nt_test_loader = None):
+    if model == None:
+        print ("error")
+        return
     model.eval()
     total = 0
     f2 = open('%s/confidence_Base_Out.txt'%outfile, 'w')
@@ -123,7 +131,7 @@ def generate_non_target(model = None, outfile = None,cuda = True, test_loader = 
             soft_out = torch.max(soft_out.data)
             f2.write("{}\n".format(soft_out))
 
-if len( args.out_dataset) > 0:
+if False:
     print('generate log from in-distribution data')
     generate_target()
     print('generate log  from out-of-distribution data')
