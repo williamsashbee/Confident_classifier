@@ -31,8 +31,8 @@ parser.add_argument('--seed', type=int, default=1, help='random seed')
 parser.add_argument('--log-interval', type=int, default=100,
                     help='how many batches to wait before logging training status')
 parser.add_argument('--nz', type=int, default=100, help='size of the latent z vector')
-parser.add_argument('--ngf', type=int, default=180)
-parser.add_argument('--ndf', type=int, default=80)
+parser.add_argument('--ngf', type=int, default=130)
+parser.add_argument('--ndf', type=int, default=85)
 parser.add_argument('--beta1', type=float, default=0.5, help='beta1 for adam. default=0.5')
 parser.add_argument('--netG', default='', help="path to netG (to continue training)")
 parser.add_argument('--netD', default='', help="path to netD (to continue training)")
@@ -45,7 +45,7 @@ parser.add_argument('--wd', type=float, default=0.0, help='weight decay')
 parser.add_argument('--droprate', type=float, default=0.1, help='learning rate decay')
 parser.add_argument('--decreasing_lr', default='60', help='decreasing strategy')
 parser.add_argument('--num_classes', type=int, default=10, help='the # of classes')
-parser.add_argument('--beta', type=float, default=1, help='penalty parameter for KL term')
+parser.add_argument('--beta', type=float, default=.01, help='penalty parameter for KL term')
 parser.add_argument('--out_dataset', default= "svhn", help='out-of-dist dataset: cifar10 | svhn | imagenet | lsun')
 
 args = parser.parse_args()
@@ -75,7 +75,9 @@ if args.dataset=='mnist':
     train_loader = torch.utils.data.DataLoader(
         datasets.MNIST('data', train=True, download=True, transform=transform),
         batch_size=128, shuffle=True)
-    test_loader = None
+    test_loader = torch.utils.data.DataLoader(
+        datasets.MNIST('data', train=False, download=True, transform=transform),
+        batch_size=128, shuffle=True)
 else:
     train_loader, test_loader = data_loader.getTargetDataSet(args.dataset, args.batch_size, args.imageSize, args.dataroot)
 
@@ -135,7 +137,7 @@ fake_label = 0
 
 
 s_criterion = nn.BCELoss()
-c_criterion = nn.NLLLoss()
+c_criterion = nn.CrossEntropyLoss()
 
 if args.cuda:
     netD.cuda()
@@ -144,30 +146,23 @@ if args.cuda:
     c_criterion.cuda()
     input, s_label = input.cuda(), s_label.cuda()
     c_label = c_label.cuda()
-    noise, fixed_noise = noise.cuda(), fixed_noise.cuda()
+    noise = noise.cuda()
 
 input = Variable(input)
 s_label = Variable(s_label)
 c_label = Variable(c_label)
 noise = Variable(noise)
 fixed_noise = Variable(fixed_noise)
-fixed_noise_ = np.random.normal(0, 1, (batchSize, nz))
-random_label = np.random.randint(0, nb_label, batchSize)
-print('fixed label:{}'.format(random_label))
-random_onehot = np.zeros((batchSize, nb_label))
-random_onehot[np.arange(batchSize), random_label] = 1
-fixed_noise_[np.arange(batchSize), :nb_label] = random_onehot[np.arange(batchSize)]
 
-
-fixed_noise_ = (torch.from_numpy(fixed_noise_))
-fixed_noise_ = fixed_noise_.resize_(batchSize, nz, 1, 1)
-fixed_noise.data.copy_(fixed_noise_)
 
 # setup optimizer
 optimizerD = optim.Adam(netD.parameters(), lr=args.lr, betas=(args.beta1, 0.999))
 optimizerG = optim.Adam(netG.parameters(), lr=args.lr, betas=(args.beta1, 0.999))
 
 BCE_loss = nn.BCELoss()
+
+first = True
+
 
 def train(epoch):
     model.train()
@@ -179,12 +174,10 @@ def train(epoch):
     global first
     global fixed_noise
     global noise
-    global fixed_label
-    global fixed_label_base
-    global one_hot_zero
     for batch_idx, (img, label) in enumerate(train_loader):
         img = img.cuda()
         label = label.cuda()
+        label_save = label
         ###########################
         # (1) Update D network
         ###########################
@@ -192,6 +185,20 @@ def train(epoch):
         if img.shape[0] != batchSize:
             print('shape problem')
             break
+        if first:
+            first = False
+            print('fixed label:{}'.format(label))
+            fixed_noise_ = np.random.normal(0, 1, (batchSize, nz))
+            random_onehot = np.zeros((batchSize, nb_label))
+            random_onehot[np.arange(batchSize), label.cpu()] = 1
+            fixed_noise_[np.arange(batchSize), :nb_label] = random_onehot[np.arange(batchSize)]
+            fixed_noise_ = (torch.from_numpy(fixed_noise_))
+            fixed_noise_ = fixed_noise_.resize_(batchSize, nz, 1, 1)
+            fixed_noise.data.copy_(fixed_noise_)
+
+            vutils.save_image(img, '%s/%s-%s-%s_realReference.png' % (
+                args.outf, "acgan", args.dataset, args.beta), normalize=True)
+
         netD.zero_grad()
         batch_size = img.size(0)
         input.data.resize_(img.size()).copy_(img)
@@ -210,33 +217,32 @@ def train(epoch):
         noise.data.resize_(batch_size, nz, 1, 1)
         noise.data.normal_(0, 1)
 
-        label_fake = np.random.randint(0, nb_label, batch_size)
+        label = np.random.randint(0, nb_label, batch_size)
         noise_ = np.random.normal(0, 1, (batch_size, nz))
         label_onehot = np.zeros((batch_size, nb_label))
-        label_onehot[np.arange(batch_size), label_fake] = 1
+        label_onehot[np.arange(batch_size), label] = 1
         noise_[np.arange(batch_size), :nb_label] = label_onehot[np.arange(batch_size)]
 
         noise_ = (torch.from_numpy(noise_))
         noise_ = noise_.resize_(batch_size, nz, 1, 1)
         noise.data.copy_(noise_)
 
-        c_label.data.resize_(batch_size).copy_(torch.from_numpy(label_fake))
-
+        c_label.data.resize_(batch_size).copy_(torch.from_numpy(label))
+        noise = Variable(noise)
         fake = netG(noise)
         s_label.data.fill_(fake_label)
         s_output, c_output = netD(fake.detach())
         s_errD_fake = s_criterion(s_output, s_label)
         c_errD_fake = c_criterion(c_output, c_label)
         errD_fake = s_errD_fake + c_errD_fake
-
         errD_fake.backward()
         D_G_z1 = s_output.data.mean()
-        errD = s_errD_real + s_errD_fake
+        errD_total = errD_fake + errD_real
         optimizerD.step()
-        trd += 1
         ###########################
         # (2) Update G network
         ###########################
+
         netG.zero_grad()
         s_label.data.fill_(real_label)  # fake labels are real for generator cost
         s_output, c_output = netD(fake)
@@ -244,10 +250,9 @@ def train(epoch):
         c_errG = c_criterion(c_output, c_label)
 
         errG = s_errG + c_errG
+        errG.backward()
         D_G_z2 = s_output.data.mean()
 
-        y_real_ = torch.ones(img.shape[0]).cuda()
-        y_real_ = Variable(y_real_)
 
         #        G_train_loss = BCE_loss(s_output, y_real_)
 
@@ -255,17 +260,17 @@ def train(epoch):
         ####fake code
         noise.data.resize_(batch_size, nz, 1, 1)
         noise.data.normal_(0, 1)
-        label_fake = np.random.randint(0, nb_label, batch_size)
+        label = np.random.randint(0, nb_label, batch_size)
         noise_ = np.random.normal(0, 1, (batch_size, nz))
         label_onehot = np.zeros((batch_size, nb_label))
-        label_onehot[np.arange(batch_size), label_fake] = 1
+        label_onehot[np.arange(batch_size), label] = 1
         noise_[np.arange(batch_size), :nb_label] = label_onehot[np.arange(batch_size)]
 
         noise_ = (torch.from_numpy(noise_))
         noise_ = noise_.resize_(batch_size, nz, 1, 1)
         noise.data.copy_(noise_)
 
-        c_label.data.resize_(batch_size).copy_(torch.from_numpy(label_fake))
+        c_label.data.resize_(batch_size).copy_(torch.from_numpy(label))
         noise = noise.cuda()
         noise = Variable(noise)
         fake = netG(noise)
@@ -275,9 +280,10 @@ def train(epoch):
         KL_fake_output = F.log_softmax(model(fake).squeeze(), dim=1)
         uniform_dist = torch.Tensor(img.shape[0], args.num_classes).fill_((1. / args.num_classes)).cuda()
         errG_KL = F.kl_div(KL_fake_output, uniform_dist)*args.num_classes
+        errG_KL = args.beta * errG_KL
+        errG_KL.backward()
         #generator_loss = G_train_loss + args.beta*errG_KL # 12.0, .65, 0e-8
-        generator_loss = errG + args.beta*errG_KL
-        generator_loss.backward()
+        errG_total = errG + errG_KL
         optimizerG.step()
         #G_losses.append(G_train_loss.item())
         ###########################
@@ -288,7 +294,7 @@ def train(epoch):
         x_ = Variable(img)
 
         output = F.log_softmax(model(x_))
-        loss = F.nll_loss(output.cuda(), label.squeeze())
+        loss = F.nll_loss(output.cuda(), label_save.squeeze())
 
         # KL divergence
 
@@ -325,16 +331,16 @@ def train(epoch):
         optimizer.step()
         if batch_idx % args.log_interval == 0:
             print(
-                "Epoch {} , Descriminator loss {:.6f} Generator loss {:.6f} traingenerator {:.6f} traindiscriminator {:.6f}".format(
-                    epoch, errD, errG, trg, trd))
+                "Epoch {} , s_errD_real loss {:.6f} c_errD_real loss {:.6f} s_errD_fake loss {:.6f} c_errD_fake loss {:.6f} Generator loss {:.6f} traingenerator {:.6f} traindiscriminator {:.6f}".format(
+                    epoch, s_errD_real, c_errD_real,s_errD_fake,c_errD_fake, errG_total, trg, trd))
             #print('Classification Train Epoch: {} [{}/{} ({:.0f}%)]\tLoss: {:.6f}, KL fake Loss: {:.6f}'.format(
             #    epoch, batch_idx * len(data), len(train_loader.dataset),
             #           100. * batch_idx / len(train_loader), loss.data.item(), KL_loss_fake.data.item()))
 
-            # print('Classification Train Epoch: {} [{}/{} ({:.0f}%)]\tLoss: {:.6f}, KL fake Loss: {:.6f}'.format(
-            #   epoch, batch_idx * len(data), len(train_loader.dataset),
-            #   100. * batch_idx / len(train_loader), loss.data.item(), KL_loss_fake.data.item()))
-            fake = netG(fixed_noise)
+            print('Classification Train Epoch: {} [{}/{} ({:.0f}%)]\tLoss: {:.6f}, KL fake Loss: {:.6f}'.format(
+                epoch, batch_idx * len(img), len(train_loader.dataset),
+                100. * batch_idx / len(train_loader), loss.data.item(), KL_loss_fake.data.item()))
+            fake = netG(fixed_noise.cuda())
             vutils.save_image(fake.data, '%s/%s_acgan_samples_epoch_%03d.png' % (args.outf, args.dataset, epoch), normalize=True)
 
 
@@ -370,7 +376,7 @@ def test(epoch):
 
 for epoch in range(1, args.epochs + 1):
     train(epoch)
-#    test(epoch)
+    test(epoch)
     if epoch in decreasing_lr:
         optimizerG.param_groups[0]['lr'] *= args.droprate
         optimizerD.param_groups[0]['lr'] *= args.droprate

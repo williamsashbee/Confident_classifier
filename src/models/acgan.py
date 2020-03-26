@@ -82,7 +82,7 @@ class acnetD(nn.Module):
         x = self.conv5(x)
         x = x.view(-1, self.ndf * 1)
         c = self.aux_linear(x)
-        c = self.softmax(c)
+        #c = self.softmax(c)
         s = self.disc_linear(x)
         s = self.sigmoid(s)
         return s, c
