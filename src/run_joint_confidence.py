@@ -234,6 +234,15 @@ import calculate_log as callog
 badBetas = open('%s/badBetas.txt' % args.outf, 'w')
 nt_test_loader = data_loader.getNonTargetDataSet(args.out_dataset, args.batch_size, args.imageSize, args.dataroot)
 
+activation = {}
+
+
+def get_activation(name):
+    def hook(model, input, output):
+        activation[name] = output.detach()
+
+    return hook
+
 while True:
     losscounter = 0
 
@@ -242,7 +251,17 @@ while True:
     print('Load model')
     global model
     model = models.vgg13()
-    print(model)
+    hooks = {}
+    #for name, module in model.named_modules():
+    #    print(name, module)
+    layers = list(model.features.children())
+    print(len(layers))
+
+
+    model.classifier.__getitem__(6).register_forward_hook(get_activation('Linear'))
+    #model.fc0.conv2.register_forward_hook(get_activation('fc0.conv2'))
+    #model.fc1.conv2.register_forward_hook(get_activation('fc1.conv2'))
+
 
     G = models.Generator(1, nz, 64, 3)  # ngpu, nz, ngf, nc
     D = models.Discriminator(1, 3, 64)  # ngpu, nc, ndf
@@ -263,6 +282,8 @@ while True:
 
     for epoch in range(1, args.epochs + 1):
         returnLoss, returnKL = train(epoch)
+        print(activation['Linear'])
+
         if returnLoss > 2.0:
             losscounter += 1
         else:
