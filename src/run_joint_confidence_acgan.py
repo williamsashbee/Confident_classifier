@@ -4,6 +4,11 @@
 # Writer: Kimin Lee 
 
 from __future__ import print_function
+import os
+
+os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"  # see issue #152
+os.environ["CUDA_VISIBLE_DEVICES"] = "5"
+
 import argparse
 import torch
 import torch.nn as nn
@@ -16,10 +21,6 @@ import models
 from torchvision import datasets, transforms
 from torch.autograd import Variable
 
-import os
-
-os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"  # see issue #152
-os.environ["CUDA_VISIBLE_DEVICES"] = "5"
 
 # Training settings
 parser = argparse.ArgumentParser(description='Training code - joint confidence')
@@ -101,23 +102,6 @@ else:
     nc = 3
     nb_label = 10
 
-netG = models.acnetG(nz, ngf, nc)
-
-if args.netG != '':
-    netG.load_state_dict(torch.load(args.netG))
-print(netG)
-
-netD = models.acnetD(ndf, nc, nb_label)
-
-if args.netD != '':
-    netD.load_state_dict(torch.load(args.netD))
-print(netD)
-
-
-print('Setup optimizer')
-optimizer = optim.Adam(model.parameters(), lr=args.lr, weight_decay=args.wd)
-
-decreasing_lr = list(map(int, args.decreasing_lr.split(',')))
 
 num_labels = 10
 if args.dataset == 'cifar10':
@@ -125,46 +109,32 @@ if args.dataset == 'cifar10':
 else:
     batchSize = 128
 imageSize = 32
-input = torch.FloatTensor(batchSize, 3, imageSize, imageSize)
+input = torch.FloatTensor(batchSize, 3, imageSize, imageSize).cuda()
 global noise
-noise = torch.FloatTensor(batchSize, nz, 1, 1)
-fixed_noise = torch.FloatTensor(batchSize, nz, 1, 1).normal_(0, 1)
-s_label = torch.FloatTensor(batchSize)
-c_label = torch.LongTensor(batchSize)
+noise = torch.FloatTensor(batchSize, nz, 1, 1).cuda()
+fixed_noise = torch.FloatTensor(batchSize, nz, 1, 1).normal_(0, 1).cuda()
+s_label = torch.FloatTensor(batchSize).cuda()
+c_label = torch.LongTensor(batchSize).cuda()
 
 real_label = 1
 fake_label = 0
 
 
-s_criterion = nn.BCELoss()
-c_criterion = nn.CrossEntropyLoss()
-
-if args.cuda:
-    netD.cuda()
-    netG.cuda()
-    s_criterion.cuda()
-    c_criterion.cuda()
-    input, s_label = input.cuda(), s_label.cuda()
-    c_label = c_label.cuda()
-    noise = noise.cuda()
-
 input = Variable(input)
-s_label = Variable(s_label)
-c_label = Variable(c_label)
 noise = Variable(noise)
 fixed_noise = Variable(fixed_noise)
 
 
-# setup optimizer
-optimizerD = optim.Adam(netD.parameters(), lr=args.lr, betas=(args.beta1, 0.999))
-optimizerG = optim.Adam(netG.parameters(), lr=args.lr, betas=(args.beta1, 0.999))
 
-BCE_loss = nn.BCELoss()
 
 first = True
 
 
 def train(epoch):
+    returnLoss = 100.0
+    returnKL = 100.0
+
+
     model.train()
     # D_train_loss = 0
     # G_train_loss = 3
@@ -330,6 +300,8 @@ def train(epoch):
         total_loss.backward()
         optimizer.step()
         if batch_idx % args.log_interval == 0:
+            returnLoss, returnKL = loss.data.item(), KL_loss_fake.data.item()
+
             print(
                 "Epoch {} , s_errD_real loss {:.6f} c_errD_real loss {:.6f} s_errD_fake loss {:.6f} c_errD_fake loss {:.6f} Generator loss {:.6f} traingenerator {:.6f} traindiscriminator {:.6f}".format(
                     epoch, s_errD_real, c_errD_real,s_errD_fake,c_errD_fake, errG_total, trg, trd))
@@ -341,8 +313,10 @@ def train(epoch):
                 epoch, batch_idx * len(img), len(train_loader.dataset),
                 100. * batch_idx / len(train_loader), loss.data.item(), KL_loss_fake.data.item()))
             fake = netG(fixed_noise.cuda())
-            vutils.save_image(fake.data, '%s/%s_acgan_samples_epoch_%03d.png' % (args.outf, args.dataset, epoch), normalize=True)
+            vutils.save_image(fake.data, '%s/%s-%s-%s-%s-_epoch_%03d.png' % (
+                args.outf, "acgan", args.dataset, args.beta, args.beta, epoch), normalize=True)
 
+    return returnLoss, returnKL
 
 
 def test(epoch):
@@ -374,15 +348,144 @@ def test(epoch):
         100. * correct / total))
 
 
-for epoch in range(1, args.epochs + 1):
-    train(epoch)
-    test(epoch)
-    if epoch in decreasing_lr:
-        optimizerG.param_groups[0]['lr'] *= args.droprate
-        optimizerD.param_groups[0]['lr'] *= args.droprate
-        optimizer.param_groups[0]['lr'] *= args.droprate
-    if epoch % 20 == 0:
-        # do checkpointing
-        torch.save(netG.state_dict(), '%s/netG_epoch_%d.pth' % (args.outf, epoch))
-        torch.save(netD.state_dict(), '%s/netD_epoch_%d.pth' % (args.outf, epoch))
-        torch.save(model.state_dict(), '%s/model_epoch_%d.pth' % (args.outf, epoch))
+maxDict = {'fpr': 0.0, 'auroc': 0.0, 'error': 0.0, 'auprin': 0.0, 'auprout': 0.0}
+import random
+from test_detection import generate_non_target
+from test_detection import generate_target
+import calculate_log as callog
+
+badBetas = open('%s/badBetas.txt' % args.outf, 'w')
+nt_test_loader = data_loader.getNonTargetDataSet(args.out_dataset, args.batch_size, args.imageSize, args.dataroot)
+
+decreasing_lr = list(map(int, args.decreasing_lr.split(',')))
+while True:
+    losscounter = 0
+    global first
+    first = True
+    #args.beta = random.uniform(0, 30)
+    args.beta = 50.0
+    print('betas', args.beta)
+    print('Load model')
+    global model
+    model = models.vgg13()
+
+    netG = models.acnetG(nz, ngf, nc)
+
+    if args.netG != '':
+        netG.load_state_dict(torch.load(args.netG))
+    print(netG)
+
+    netD = models.acnetD(ndf, nc, nb_label)
+
+    if args.netD != '':
+        netD.load_state_dict(torch.load(args.netD))
+    print(netD)
+
+    global BCE_loss
+    global criterion
+
+    BCE_loss = nn.BCELoss()
+    criterion = nn.BCELoss()
+    s_criterion = nn.BCELoss()
+    c_criterion = nn.CrossEntropyLoss()
+
+    if args.cuda:
+        model.cuda()
+        netD.cuda()
+        netG.cuda()
+        criterion.cuda()
+        BCE_loss.cuda()
+        s_criterion = s_criterion.cuda()
+        c_criterion = c_criterion.cuda()
+    optimizer = optim.Adam(model.parameters(), lr=args.lr, weight_decay=args.wd)
+    optimizerG = optim.Adam(netG.parameters(), lr=args.lr, betas=(0.5, 0.999))
+    optimizerD = optim.Adam(netD.parameters(), lr=args.lr, betas=(0.5, 0.999))
+
+    for epoch in range(1, args.epochs + 1):
+        returnLoss, returnKL = train(epoch)
+
+        if returnLoss > 2.0:
+            losscounter += 1
+        else:
+            losscounter = 0
+        if losscounter > 10:
+            print('losscounter indicates these hyperaparameters are broken, breaking out of this set of parameters.',
+                  args.beta)
+            badBetas.write(str(args.beta) + '\n')
+            badBetas.flush()
+            break  # trying to avoid wasting too many epochs on a broken set of hyperparameters
+        test(epoch)
+        if epoch in decreasing_lr:
+            optimizerG.param_groups[0]['lr'] *= args.droprate
+            optimizerD.param_groups[0]['lr'] *= args.droprate
+            optimizer.param_groups[0]['lr'] *= args.droprate
+        if epoch % 5 == 0:
+            # do checkpointing
+
+            torch.save(netG.state_dict(),
+                       '%s/%s-%s-%s-%s-_netG%03d.pth' % (
+                           args.outf, "acgan", args.dataset, args.beta, args.beta, epoch))
+            torch.save(netD.state_dict(),
+                       '%s/%s-%s-%s-%s-_netD%03d.pth' % (
+                           args.outf, "acgan", args.dataset, args.beta, args.beta, epoch))
+
+            modelName = '%s/%s-%s-%s-%s-model_%03d.pth' % (
+                args.outf, "acgan", args.dataset, args.beta, args.beta, epoch)
+            torch.save(model.state_dict(), modelName)
+            print('saving')
+            print('generate log from in-distribution data')
+            generate_target(model=model, outfile=args.outf, cuda=args.cuda, test_loader=test_loader,
+                            nt_test_loader=nt_test_loader)
+            print('generate log  from out-of-distribution data')
+            generate_non_target(model=model, outfile=args.outf, cuda=args.cuda, test_loader=test_loader,
+                                nt_test_loader=nt_test_loader)
+            print('calculate metrics')
+            fpr, auroc, error, auprin, auprout = callog.metric(args.outf)
+
+            if fpr > maxDict['fpr'] and fpr < 99:
+                maxDict['fpr'] = fpr
+                modelName = '%s/%s-%s-%s-%.3f-%s-%s.pth' % (
+                    args.outf, "acgan", args.dataset, "fpr", fpr, args.beta, args.beta)
+                torch.save(model.state_dict(), modelName)
+                print(modelName, "saved")
+            if auroc > maxDict['auroc'] and auroc < 99:
+                maxDict['auroc'] = auroc
+                modelName = '%s/%s-%s-%s-%.3f-%s-%s.pth' % (
+                    args.outf, "acgan", args.dataset, "auroc", auroc, args.beta, args.beta)
+                torch.save(model.state_dict(), modelName)
+                print(modelName, "saved")
+
+            if error > maxDict['error'] and error < 99:
+                maxDict['error'] = error
+                modelName = '%s/%s-%s-%s-%.3f-%s-%s.pth' % (
+                    args.outf, "acgan", args.dataset, "error", error, args.beta, args.beta)
+                torch.save(model.state_dict(), modelName)
+                print(modelName, "saved")
+
+            if auprin > maxDict['auprin'] and auprin < 99:
+                maxDict['auprin'] = auprin
+                modelName = '%s/%s-%s-%s-%.3f-%s-%s.pth' % (
+                    args.outf, "acgan", args.dataset, "auprin", auprin, args.beta, args.beta)
+                torch.save(model.state_dict(), modelName)
+                print(modelName, "saved")
+
+            if auprout > maxDict['auprout'] and auprout < 99:
+                maxDict['auprout'] = auprout
+                modelName = '%s/%s-%s-%s-%.3f-%s-%s.pth' % (
+                    args.outf, "acgan", args.dataset, "auprout", auprout, args.beta, args.beta)
+                torch.save(model.state_dict(), modelName)
+                print(modelName, "saved")
+            if fpr < .1 or auprout < .1 or auprin < .1 or auroc < .1 or error < .1:
+                print('saving error model for debugging')
+                modelName = '%s/%s-%s-%s-%s-%s-%s-%s-%s-%s-%.3f-%.3f.pth' % (
+                    args.outf, "acgan", args.dataset, "debug", fpr, auroc, error, auprin, auprout, epoch, args.beta,
+                    args.beta)
+                torch.save(model.state_dict(), modelName)
+                print(modelName, "saved")
+            if fpr >= 99 or auprout >= 99 or auprin >= 99 or auroc >= 99 or error >= 99:
+                print('saving error model for debugging')
+                modelName = '%s/%s-%s-%s-%s-%s-%s-%s-%s-%s-%.3f-%.3f.pth' % (
+                    args.outf, "acgan", args.dataset, "debug", fpr, auroc, error, auprin, auprout, epoch, args.beta,
+                    args.beta)
+                torch.save(model.state_dict(), modelName)
+                print(modelName, "saved")
