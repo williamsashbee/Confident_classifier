@@ -362,8 +362,7 @@ while True:
     losscounter = 0
     global first
     first = True
-    #args.beta = random.uniform(0, 30)
-    args.beta = 50.0
+    args.beta = random.uniform(0, 30)
     print('betas', args.beta)
     print('Load model')
     global model
