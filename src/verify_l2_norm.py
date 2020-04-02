@@ -70,24 +70,23 @@ if args.dataset == 'mnist':
 else:
     _, test_loader = data_loader.getTargetDataSet(args.dataset, args.batch_size, args.imageSize, args.dataroot)
 
-global nt_test_loader
-if args.out_dataset == 'mnist':
-    transform = transforms.Compose([
-        transforms.Scale(32),
-        transforms.ToTensor(),
-        transforms.Lambda(lambda x: x.repeat(3, 1, 1)),
-        transforms.Normalize(mean=(1.0, 1.0, 1.0), std=(1.0, 1.0, 1.0))
-    ])
 
-    print('load non target data: ',args.out_dataset)
-    nt_test_loader = torch.utils.data.DataLoader(
-        datasets.MNIST('data', train=False, download=True, transform=transform),
-        batch_size=128, shuffle=True)
-    print("finished loading mnist non target")
+cifar10_test_loader = data_loader.getNonTargetDataSet("cifar10", args.batch_size, args.imageSize, args.dataroot)
 
-else:
-    print('load non target data: ',args.out_dataset)
-    nt_test_loader = data_loader.getNonTargetDataSet(args.out_dataset, args.batch_size, args.imageSize, args.dataroot)
+svhn_test_loader = data_loader.getNonTargetDataSet("svhn", args.batch_size, args.imageSize, args.dataroot)
+
+stl10_test_loader = data_loader.getNonTargetDataSet("stl10", args.batch_size, args.imageSize, args.dataroot)
+
+transform = transforms.Compose([
+    transforms.Scale(32),
+    transforms.ToTensor(),
+    transforms.Lambda(lambda x: x.repeat(3, 1, 1)),
+    transforms.Normalize(mean=(1.0, 1.0, 1.0), std=(1.0, 1.0, 1.0))
+])
+
+mnist_test_loader = torch.utils.data.DataLoader(
+    datasets.MNIST('data', train=False, download=True, transform=transform),
+    batch_size=128, shuffle=True)
 
 if args.cuda:
     model.cuda()
@@ -98,6 +97,7 @@ if args.cuda:
 # print(len(features))
 # https://discuss.pytorch.org/t/backward-starting-from-intermediate-layer/10189/3
 #features = nn.ModuleList(features).eval()
+
 
 def generate_target():
     epochNorms = 0.0
@@ -112,7 +112,7 @@ def generate_target():
         #vutils.save_image(data, '%s/target_samples.png'%args.outf, normalize=True)
         if args.cuda:
             data, target = data.cuda(), target.cuda()
-        data, target = Variable(data, volatile=True), Variable(target)
+        data, target = Variable(data), Variable(target)
 
 
         out = data
@@ -120,27 +120,80 @@ def generate_target():
 
     print ("generated target epoch norms", epochNorms/count)
 
-def generate_non_target():
+
+def generate_svhn():
     epochNorms = 0.0
     model.eval()
     total = 0
     count = 0
-    for data, target in nt_test_loader:
+    for data, target in svhn_test_loader:
         total += data.size(0)
         if args.cuda:
             data, target = data.cuda(), target.cuda()
-        data, target = Variable(data, volatile=True), Variable(target)
+        data, target = Variable(data), Variable(target)
         out = data
         epochNorms += torch.mean((model(out)) ** 2).data.item()
         count +=1
 
-    print("generated non-target epoch norms", epochNorms / count)
+    print("generated svhn epoch norms", epochNorms / count)
 
 
-print('generate log from in-distribution data')
+def generate_stl10():
+    epochNorms = 0.0
+    model.eval()
+    total = 0
+    count = 0
+    for data, target in stl10_test_loader:
+        total += data.size(0)
+        if args.cuda:
+            data, target = data.cuda(), target.cuda()
+        data, target = Variable(data), Variable(target)
+        out = data
+        epochNorms += torch.mean((model(out)) ** 2).data.item()
+        count +=1
+
+    print("generated stl10 epoch norms", epochNorms / count)
+
+def generate_cifar10():
+    epochNorms = 0.0
+    model.eval()
+    total = 0
+    count = 0
+    for data, target in cifar10_test_loader:
+        total += data.size(0)
+        if args.cuda:
+            data, target = data.cuda(), target.cuda()
+        data, target = Variable(data), Variable(target)
+        out = data
+        epochNorms += torch.mean((model(out)) ** 2).data.item()
+        count +=1
+
+    print("generated cifar10 epoch norms", epochNorms / count)
+
+
+def generate_mnist():
+    epochNorms = 0.0
+    model.eval()
+    total = 0
+    count = 0
+    for data, target in mnist_test_loader:
+        total += data.size(0)
+        if args.cuda:
+            data, target = data.cuda(), target.cuda()
+        data, target = Variable(data), Variable(target)
+        out = data
+        epochNorms += torch.mean((model(out)) ** 2).data.item()
+        count +=1
+
+    print("generated mnist epoch norms", epochNorms / count)
+
+
 generate_target()
-print('generate log  from out-of-distribution data')
-generate_non_target()
+generate_cifar10()
+generate_svhn()
+generate_mnist()
+generate_stl10()
+
 #print('calculate metrics')
 #callog.metric(args.outf)
 #!!!!!!!!!!!!tomorrow, check other out distribution datasets
