@@ -61,12 +61,16 @@ kwargs = {'num_workers': 1, 'pin_memory': True} if args.cuda else {}
 
 print('load data: ', args.dataset)
 
+mnist_mean = [0.1307, 0.1307, 0.1307]
+mnist_std = [0.3081, 0.3081, 0.3081]
+
 if args.dataset == 'mnist':
+    print ("mnist is train_loader")
     transform = transforms.Compose([
         transforms.Scale(32),
         transforms.ToTensor(),
         transforms.Lambda(lambda x: x.repeat(3, 1, 1)),
-        transforms.Normalize(mean=(0.5, 0.5, 0.5), std=(0.5, 0.5, 0.5))
+        transforms.Normalize(mean=mnist_mean, std=mnist_std)
     ])
 
     train_loader = torch.utils.data.DataLoader(
@@ -76,6 +80,7 @@ if args.dataset == 'mnist':
         datasets.MNIST('data', train=False, download=True, transform=transform),
         batch_size=128, shuffle=True)
 else:
+    print(args.dataset, " is train_loader")
     train_loader, test_loader = data_loader.getTargetDataSet(args.dataset, args.batch_size, args.imageSize,
                                                              args.dataroot)
 
@@ -91,12 +96,16 @@ decreasing_lr = list(map(int, args.decreasing_lr.split(',')))
 #https://discuss.pytorch.org/t/custom-loss-functions/29387
 #https://stackoverflow.com/questions/42704283/adding-l1-l2-regularization-in-pytorch
 def my_loss(output):
-    loss = -torch.mean((output)**2)
-    lam = .01
+    loss = -torch.mean(output**2).reshape(1,)
+
     l2_reg = Variable(torch.zeros(1).cuda())
     for param in D.parameters():
-        l2_reg += torch.norm(param)
-    loss += torch.sum(lam *l2_reg)
+        l2_reg += torch.mean(param**2)
+    if l2_reg > 2.0:
+        lam = 1.2
+    else:
+        lam = .8
+    loss += (lam *l2_reg)
 
     return loss
 
@@ -129,7 +138,7 @@ def train(epoch):
         if batch_idx % args.log_interval == 0:
             print('Classification Train Epoch: {} [{}/{} ({:.0f}%)]\tLoss: {:.6f}'.format(
                 epoch, batch_idx * len(data), len(train_loader.dataset),
-                       100. * batch_idx / len(train_loader), errD_real))
+                       100. * batch_idx / len(train_loader), errD_real.data.item()))
             print('errD_real', errD_real.grad)
             #print('sum',torch.sum(D))
 

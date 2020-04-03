@@ -50,26 +50,6 @@ model = models.unsupervised_Discriminator(1, 3, 64)
 model.load_state_dict(torch.load(args.pre_trained_net))
 print(model)
 
-print('load target data: ',args.dataset)
-if args.dataset == 'mnist':
-    transform = transforms.Compose([
-        transforms.Scale(32),
-        transforms.ToTensor(),
-        transforms.Lambda(lambda x: x.repeat(3, 1, 1)),
-        transforms.Normalize(mean=(0.5, 0.5, 0.5), std=(0.5, 0.5, 0.5))
-    ])
-
-    train_loader = torch.utils.data.DataLoader(
-        datasets.MNIST('data', train=True, download=True, transform=transform),
-        batch_size=128, shuffle=True)
-    test_loader = torch.utils.data.DataLoader(
-        datasets.MNIST('data', train=False, download=True, transform=transform),
-        batch_size=128, shuffle=True)
-    print("finished loading mnist")
-
-else:
-    _, test_loader = data_loader.getTargetDataSet(args.dataset, args.batch_size, args.imageSize, args.dataroot)
-
 
 cifar10_test_loader = data_loader.getNonTargetDataSet("cifar10", args.batch_size, args.imageSize, args.dataroot)
 
@@ -77,15 +57,19 @@ svhn_test_loader = data_loader.getNonTargetDataSet("svhn", args.batch_size, args
 
 stl10_test_loader = data_loader.getNonTargetDataSet("stl10", args.batch_size, args.imageSize, args.dataroot)
 
-transform = transforms.Compose([
+mnist_mean = [0.1307, 0.1307, 0.1307]
+mnist_std = [0.3081, 0.3081, 0.3081]
+
+mnist_transform = transforms.Compose([
     transforms.Scale(32),
     transforms.ToTensor(),
     transforms.Lambda(lambda x: x.repeat(3, 1, 1)),
-    transforms.Normalize(mean=(1.0, 1.0, 1.0), std=(1.0, 1.0, 1.0))
+    transforms.Normalize(mean = mnist_mean, std = mnist_std)
 ])
 
+
 mnist_test_loader = torch.utils.data.DataLoader(
-    datasets.MNIST('data', train=False, download=True, transform=transform),
+    datasets.MNIST('data', train=False, download=True, transform=mnist_transform),
     batch_size=128, shuffle=True)
 
 if args.cuda:
@@ -99,30 +83,11 @@ if args.cuda:
 #features = nn.ModuleList(features).eval()
 
 
-def generate_target():
-    epochNorms = 0.0
-    model.eval()
-    correct = 0
-    total = 0
-    f1 = open('%s/confidence_Base_In.txt'%args.outf, 'w')
-    count = 0
-    for data, target in test_loader:
-        count +=1
-        total += data.size(0)
-        #vutils.save_image(data, '%s/target_samples.png'%args.outf, normalize=True)
-        if args.cuda:
-            data, target = data.cuda(), target.cuda()
-        data, target = Variable(data), Variable(target)
-
-
-        out = data
-        epochNorms += torch.mean((model(out)) ** 2).data.item()
-
-    print ("generated target epoch norms", epochNorms/count)
-
-
 def generate_svhn():
-    epochNorms = 0.0
+    meanMax = 0.0
+    meanMin = 0.0
+    stdMax = 0.0
+    stdMin = 0.0
     model.eval()
     total = 0
     count = 0
@@ -132,30 +97,26 @@ def generate_svhn():
             data, target = data.cuda(), target.cuda()
         data, target = Variable(data), Variable(target)
         out = data
-        epochNorms += torch.mean((model(out)) ** 2).data.item()
+        mean =  torch.mean((model(out)) ** 2).data.item()
+        std = torch.std(model(out)**2).data.item()
+        meanMax = max(mean, meanMax)
+        meanMin = min(mean, meanMin)
+        stdMax = max(std, stdMax)
+        stdMin = min(std, stdMin)
+
         count +=1
 
-    print("generated svhn epoch norms", epochNorms / count)
+    print("generated svhn mean max", meanMax)
+    print("generated svhn mean min", meanMin)
+    print("generated svhn std max", stdMax)
+    print("generated svhn std min", stdMin)
 
-
-def generate_stl10():
-    epochNorms = 0.0
-    model.eval()
-    total = 0
-    count = 0
-    for data, target in stl10_test_loader:
-        total += data.size(0)
-        if args.cuda:
-            data, target = data.cuda(), target.cuda()
-        data, target = Variable(data), Variable(target)
-        out = data
-        epochNorms += torch.mean((model(out)) ** 2).data.item()
-        count +=1
-
-    print("generated stl10 epoch norms", epochNorms / count)
 
 def generate_cifar10():
-    epochNorms = 0.0
+    meanMax = 0.0
+    meanMin = 0.0
+    stdMax = 0.0
+    stdMin = 0.0
     model.eval()
     total = 0
     count = 0
@@ -165,14 +126,55 @@ def generate_cifar10():
             data, target = data.cuda(), target.cuda()
         data, target = Variable(data), Variable(target)
         out = data
-        epochNorms += torch.mean((model(out)) ** 2).data.item()
+        mean =  torch.mean((model(out)) ** 2).data.item()
+        std = torch.std(model(out)**2).data.item()
+        meanMax = max(mean, meanMax)
+        meanMin = min(mean, meanMin)
+        stdMax = max(std, stdMax)
+        stdMin = min(std, stdMin)
+
         count +=1
 
-    print("generated cifar10 epoch norms", epochNorms / count)
+    print("generated cifar10 mean max", meanMax)
+    print("generated cifar10 mean min", meanMin)
+    print("generated cifar10 std max", stdMax)
+    print("generated cifar10 std min", stdMin)
+
+
+def generate_stl10():
+    meanMax = 0.0
+    meanMin = 0.0
+    stdMax = 0.0
+    stdMin = 0.0
+    model.eval()
+    total = 0
+    count = 0
+    for data, target in stl10_test_loader:
+        total += data.size(0)
+        if args.cuda:
+            data, target = data.cuda(), target.cuda()
+        data, target = Variable(data), Variable(target)
+        out = data
+        mean =  torch.mean((model(out)) ** 2).data.item()
+        std = torch.std(model(out)**2).data.item()
+        meanMax = max(mean, meanMax)
+        meanMin = min(mean, meanMin)
+        stdMax = max(std, stdMax)
+        stdMin = min(std, stdMin)
+
+        count +=1
+
+    print("generated stl10 mean max", meanMax)
+    print("generated stl10 mean min", meanMin)
+    print("generated stl10 std max", stdMax)
+    print("generated stl10 std min", stdMin)
 
 
 def generate_mnist():
-    epochNorms = 0.0
+    meanMax = 0.0
+    meanMin = 0.0
+    stdMax = 0.0
+    stdMin = 0.0
     model.eval()
     total = 0
     count = 0
@@ -182,18 +184,23 @@ def generate_mnist():
             data, target = data.cuda(), target.cuda()
         data, target = Variable(data), Variable(target)
         out = data
-        epochNorms += torch.mean((model(out)) ** 2).data.item()
+        mean =  torch.mean((model(out)) ** 2).data.item()
+        std = torch.std(model(out)**2).data.item()
+        meanMax = max(mean, meanMax)
+        meanMin = min(mean, meanMin)
+        stdMax = max(std, stdMax)
+        stdMin = min(std, stdMin)
+
         count +=1
 
-    print("generated mnist epoch norms", epochNorms / count)
+    print("generated mnist mean max", meanMax)
+    print("generated mnist mean min", meanMin)
+    print("generated mnist std max", stdMax)
+    print("generated mnist std min", stdMin)
 
 
-generate_target()
 generate_cifar10()
 generate_svhn()
 generate_mnist()
 generate_stl10()
 
-#print('calculate metrics')
-#callog.metric(args.outf)
-#!!!!!!!!!!!!tomorrow, check other out distribution datasets
