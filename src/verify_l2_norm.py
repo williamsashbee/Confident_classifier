@@ -112,6 +112,27 @@ def generate_svhn():
     print("generated svhn std min", stdMin)
 
 
+def generate_cifar10_classbased():
+    meanMax = 0.0
+    meanMin = 0.0
+    stdMax = 0.0
+    stdMin = 0.0
+    model.eval()
+    total = 0
+    count = 0
+
+    for data, target in cifar10_test_loader:
+        total += data.size(0)
+        if args.cuda:
+            data, target = data.cuda(), target.cuda()
+        data, target = Variable(data), Variable(target)
+        sumin = torch.mean(model(data[target == 0]) ** 2,(1,2,3))
+        sumout = torch.mean(model(data[target != 0]) ** 2,(1,2,3))
+
+        print (sumin,sumout)
+        break
+
+
 def generate_cifar10():
     meanMax = 0.0
     meanMin = 0.0
@@ -203,4 +224,5 @@ generate_cifar10()
 generate_svhn()
 generate_mnist()
 generate_stl10()
+generate_cifar10_classbased()
 

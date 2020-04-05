@@ -95,19 +95,11 @@ decreasing_lr = list(map(int, args.decreasing_lr.split(',')))
 
 #https://discuss.pytorch.org/t/custom-loss-functions/29387
 #https://stackoverflow.com/questions/42704283/adding-l1-l2-regularization-in-pytorch
-def my_loss(output):
-    loss = -torch.mean(output**2).reshape(1,)
+def my_loss(output, target, invalue):
+    inloss = -torch.mean(output[target == invalue] ** 2).reshape(1, )
+    outloss = torch.mean(output[target != invalue] ** 2).reshape(1, )
 
-    l2_reg = Variable(torch.zeros(1).cuda())
-    for param in D.parameters():
-        l2_reg += torch.mean(param**2)
-    if l2_reg > 2.0:
-        lam = 1.2
-    else:
-        lam = .8
-    loss += (lam *l2_reg)
-
-    return loss
+    return inloss+outloss,inloss,outloss
 
 def train(epoch):
     D.train()
@@ -129,8 +121,11 @@ def train(epoch):
         D_optimizer.zero_grad()
         #x = torch.randn(128, 3,32,32).cuda()
         x = data
+
+        if x[target == 0].shape[0] ==0:
+            continue
         output = D(x)
-        errD_real = my_loss(output)
+        errD_real = my_loss(output,target, invalue=0)
         errD_real.retain_grad()
         errD_real.backward()
         D_optimizer.step()
