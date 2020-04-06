@@ -93,13 +93,48 @@ decreasing_lr = list(map(int, args.decreasing_lr.split(',')))
 #    loss = torch.sum(Variable(norm, requires_grad = True))/X.shape[0]
 #    return Variable(loss, requires_grad = True)
 
+
 #https://discuss.pytorch.org/t/custom-loss-functions/29387
 #https://stackoverflow.com/questions/42704283/adding-l1-l2-regularization-in-pytorch
-def my_loss(output, target, invalue):
-    inloss = -torch.mean(output[target == invalue] ** 2).reshape(1, )
-    outloss = torch.mean(output[target != invalue] ** 2).reshape(1, )
+def my_loss(D, x , target, invalue):
+    l, out = D(x[target==invalue])
+    totalin = 0.0
+    lossin = Variable(torch.zeros(x[target==invalue].shape[0],).cuda())
+    for el in l:
+        lossin += torch.sum(el**2,dim = (1,2,3))
+        totalin += el.numel()
 
-    return inloss+outloss,inloss,outloss
+    lossin/=totalin
+    lossin=torch.mean(lossin)
+    l, out = D(x[target != invalue])
+
+    totalout = 0.0
+    lossout = Variable(torch.zeros(x[target!=invalue].shape[0], ).cuda())
+    for el in l:
+        lossout += torch.sum(el**2, dim = (1,2,3))
+        totalout += el.numel()
+    lossout/= totalout
+    lossout = torch.mean(lossout)
+
+    term1 = -lossin/totalin
+    term2 = lossout/totalout
+
+    l2_reg = Variable(torch.zeros(1).cuda())
+    totalreg = 0.0
+    for param in D.parameters():
+        l2_reg += torch.sum(param ** 2)
+        totalreg+=param.numel()
+
+    lossreg = l2_reg/totalreg
+
+    lam = 1.0
+    if lossreg > 2.0:
+        lam *= 2.0
+    else:
+        lam *= .5
+    lossreg = lam * l2_reg
+
+    return term1 + term2 + lossreg
 
 def train(epoch):
     D.train()
@@ -124,8 +159,7 @@ def train(epoch):
 
         if x[target == 0].shape[0] ==0:
             continue
-        output = D(x)
-        errD_real = my_loss(output,target, invalue=0)
+        errD_real = my_loss(D,x,target, invalue=0)
         errD_real.retain_grad()
         errD_real.backward()
         D_optimizer.step()
@@ -164,10 +198,28 @@ def test(epoch):
 """
 
 
+class Vgg13(torch.nn.Module):
+    def __init__(self):
+        super(Vgg13, self).__init__()
+        features = list(models.vgg13().features)
+        self.features = nn.ModuleList(features).eval()
+
+    def forward(self, x):
+        results = []
+        for ii, model in enumerate(self.features):
+            x = model(x)
+            if ii in {1,3,6,8,11,13,16,18,21,23}:
+                results.append(x)
+        return results, x
+
+
 global D
 global D_optimizer
+
+
 while True:
-    D = models.unsupervised_Discriminator(1, 3, 64)  # ngpu, nc, ndf
+    #new_classifier = nn.Sequential(*list(model.classifier.children())[:-1])https://discuss.pytorch.org/t/how-to-extract-features-of-an-image-from-a-trained-model/119/3
+    D = Vgg13()   # ngpu, nc, ndf
 
     if args.cuda:
         D.cuda()
@@ -186,3 +238,5 @@ while True:
                        '%s/%s-%s_netD%03d.pth' % (
                            args.outf, "unsupervised_discriminator.pth", args.dataset, epoch))
 
+#https://pytorch.org/tutorials/beginner/transfer_learning_tutorial.html#sphx-glr-beginner-transfer-learning-tutorial-py
+#https://stackoverflow.com/questions/55083642/extract-features-from-last-hidden-layer-pytorch-resnet18

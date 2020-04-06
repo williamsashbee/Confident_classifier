@@ -46,7 +46,23 @@ if args.cuda:
 kwargs = {'num_workers': 1, 'pin_memory': True} if args.cuda else {}
 
 print('Load model')
-model = models.unsupervised_Discriminator(1, 3, 64)
+
+class Vgg13(torch.nn.Module):
+    def __init__(self):
+        super(Vgg13, self).__init__()
+        features = list(models.vgg13().features)
+        self.features = nn.ModuleList(features).eval()
+
+    def forward(self, x):
+        results = []
+        for ii, model in enumerate(self.features):
+            x = model(x)
+            if ii in {1,3,6,8,11,13,16,18,21,23}:
+                results.append(x)
+        return results, x
+
+
+model = Vgg13()
 model.load_state_dict(torch.load(args.pre_trained_net))
 print(model)
 
@@ -133,33 +149,25 @@ def generate_cifar10_classbased():
         break
 
 
+def my_loss(D, x):
+    l, out = D(x)
+    total = 0.0
+    loss = Variable(torch.zeros(x.shape[0],).cuda())
+    print ('begin')
+    for el in l:
+        loss += torch.sum(el ** 2, dim = (1,2,3))
+        total += el.numel()
+        #print(el.numel())
+    return torch.mean(loss/el.numel()).data.item()
+
+
 def generate_cifar10():
-    meanMax = 0.0
-    meanMin = 0.0
-    stdMax = 0.0
-    stdMin = 0.0
-    model.eval()
-    total = 0
-    count = 0
     for data, target in cifar10_test_loader:
-        total += data.size(0)
         if args.cuda:
             data, target = data.cuda(), target.cuda()
         data, target = Variable(data), Variable(target)
-        out = data
-        mean =  torch.mean((model(out)) ** 2).data.item()
-        std = torch.std(model(out)**2).data.item()
-        meanMax = max(mean, meanMax)
-        meanMin = min(mean, meanMin)
-        stdMax = max(std, stdMax)
-        stdMin = min(std, stdMin)
-
-        count +=1
-
-    print("generated cifar10 mean max", meanMax)
-    print("generated cifar10 mean min", meanMin)
-    print("generated cifar10 std max", stdMax)
-    print("generated cifar10 std min", stdMin)
+        print("cifar 10 in ", my_loss(model,data[target == 0]))
+        print("cifar 10 out", my_loss(model,data[target == 1]))
 
 
 def generate_stl10():
@@ -226,3 +234,4 @@ generate_mnist()
 generate_stl10()
 generate_cifar10_classbased()
 
+#https://discuss.pytorch.org/t/output-from-hidden-layers/6325/2
