@@ -6,7 +6,7 @@ from __future__ import print_function
 import os
 
 os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"  # see issue #152
-os.environ["CUDA_VISIBLE_DEVICES"] = "6"
+os.environ["CUDA_VISIBLE_DEVICES"] = "4"
 
 import argparse
 import torch
@@ -28,7 +28,7 @@ parser = argparse.ArgumentParser(description='Training code - joint confidence')
 parser.add_argument('--batch-size', type=int, default=128, help='input batch size for training')
 parser.add_argument('--save-interval', type=int, default=3, help='save interval')
 parser.add_argument('--epochs', type=int, default=100, help='number of epochs to train')
-parser.add_argument('--lr', type=float, default=0.0002, help='learning rate')
+parser.add_argument('--lr', type=float, default=0.00002, help='learning rate')
 parser.add_argument('--no-cuda', action='store_true', default=False, help='disables CUDA training')
 parser.add_argument('--seed', type=int, default=1, help='random seed')
 parser.add_argument('--log-interval', type=int, default=100,
@@ -96,45 +96,43 @@ decreasing_lr = list(map(int, args.decreasing_lr.split(',')))
 
 #https://discuss.pytorch.org/t/custom-loss-functions/29387
 #https://stackoverflow.com/questions/42704283/adding-l1-l2-regularization-in-pytorch
+global lam
+lam = 1.0
+
+
 def my_loss(D, x , target, invalue):
-    l, out = D(x[target==invalue])
-    totalin = 0.0
-    lossin = Variable(torch.zeros(x[target==invalue].shape[0],).cuda())
-    for el in l:
-        lossin += torch.sum(el**2,dim = (1,2,3))
-        totalin += el.numel()
+    global lam
+    lin, outin = D(x[target==invalue])
+    lossin = None
+    for a in lin:
+        if lossin == None:
+            lossin = torch.mean(torch.sum( a**2, dim = (1,2,3)))
+        else:
+            lossin += torch.mean(torch.sum( a**2, dim = (1,2,3)))
 
-    lossin/=totalin
-    lossin=torch.mean(lossin)
-    l, out = D(x[target != invalue])
+    lout, outout = D(x[target != invalue])
+    lossout = None
+    for a in lout:
+        if lossout == None:
+            lossout = torch.mean(torch.sum( a**2, dim = (1,2,3)))
+        else:
+            lossout += torch.mean(torch.sum( a**2, dim = (1,2,3)))
+    term1 = -lossin#/lin[0].shape[0]
+    term2 = lossout#/lout[0].shape[0]
+    """
+    l2_reg = None
+    for W in D.parameters(): #https://discuss.pytorch.org/t/how-does-one-implement-weight-regularization-l1-or-l2-manually-without-optimum/7951/5
+        if l2_reg is None:
+            l2_reg = W.norm(2)
+        else:
+            l2_reg = l2_reg + W.norm(2)
 
-    totalout = 0.0
-    lossout = Variable(torch.zeros(x[target!=invalue].shape[0], ).cuda())
-    for el in l:
-        lossout += torch.sum(el**2, dim = (1,2,3))
-        totalout += el.numel()
-    lossout/= totalout
-    lossout = torch.mean(lossout)
-
-    term1 = -lossin/totalin
-    term2 = lossout/totalout
-
-    l2_reg = Variable(torch.zeros(1).cuda())
-    totalreg = 0.0
-    for param in D.parameters():
-        l2_reg += torch.sum(param ** 2)
-        totalreg+=param.numel()
-
-    lossreg = l2_reg/totalreg
-
-    lam = 1.0
-    if lossreg > 2.0:
-        lam *= 2.0
+    if term1 < -1000:
+        lam *= 10.0
     else:
-        lam *= .5
-    lossreg = lam * l2_reg
-
-    return term1 + term2 + lossreg
+        lam *= .1
+    """
+    return term1 + 3.0*term2 #+ lam * l2_reg
 
 def train(epoch):
     D.train()
@@ -208,7 +206,7 @@ class Vgg13(torch.nn.Module):
         results = []
         for ii, model in enumerate(self.features):
             x = model(x)
-            if ii in {1,3,6,8,11,13,16,18,21,23}:
+            if ii in {24}:
                 results.append(x)
         return results, x
 

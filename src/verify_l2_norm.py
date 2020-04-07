@@ -57,7 +57,7 @@ class Vgg13(torch.nn.Module):
         results = []
         for ii, model in enumerate(self.features):
             x = model(x)
-            if ii in {1,3,6,8,11,13,16,18,21,23}:
+            if ii in {24}:
                 results.append(x)
         return results, x
 
@@ -100,33 +100,17 @@ if args.cuda:
 
 
 def generate_svhn():
-    meanMax = 0.0
-    meanMin = 0.0
-    stdMax = 0.0
-    stdMin = 0.0
-    model.eval()
-    total = 0
-    count = 0
+    totalout = 0.0
+    count = 0.0
     for data, target in svhn_test_loader:
-        total += data.size(0)
         if args.cuda:
             data, target = data.cuda(), target.cuda()
         data, target = Variable(data), Variable(target)
-        out = data
-        mean =  torch.mean((model(out)) ** 2).data.item()
-        std = torch.std(model(out)**2).data.item()
-        meanMax = max(mean, meanMax)
-        meanMin = min(mean, meanMin)
-        stdMax = max(std, stdMax)
-        stdMin = min(std, stdMin)
-
-        count +=1
-
-    print("generated svhn mean max", meanMax)
-    print("generated svhn mean min", meanMin)
-    print("generated svhn std max", stdMax)
-    print("generated svhn std min", stdMin)
-
+        outloss = my_loss(model, data)
+        totalout += outloss
+        count += 1.0
+        #print("svhn out \n", outloss)
+    print("svhn out \n", totalout / count)
 
 def generate_cifar10_classbased():
     meanMax = 0.0
@@ -153,85 +137,66 @@ def my_loss(D, x):
     l, out = D(x)
     total = 0.0
     loss = Variable(torch.zeros(x.shape[0],).cuda())
-    print ('begin')
+    loss = None
     for el in l:
-        loss += torch.sum(el ** 2, dim = (1,2,3))
-        total += el.numel()
-        #print(el.numel())
+        if loss == None:
+            loss = el.norm(2)
+        else:
+            loss += el.norm(2)
+
     return torch.mean(loss/el.numel()).data.item()
 
 
 def generate_cifar10():
+    totalin = 0.0
+    totalout = 0.0
+    count = 0.0
     for data, target in cifar10_test_loader:
         if args.cuda:
             data, target = data.cuda(), target.cuda()
         data, target = Variable(data), Variable(target)
-        print("cifar 10 in ", my_loss(model,data[target == 0]))
-        print("cifar 10 out", my_loss(model,data[target == 1]))
+        inloss = my_loss(model, data[target == 0])
+        outloss = my_loss(model,data[target == 1])
+        totalin += inloss
+        totalout += outloss
+        count += 1.0
+        print("cifar 10 in \n", inloss)
+        print("cifar 10 out \n", outloss)
+    print("cifar 10 avgin \n", totalin/count)
+    print("cifar 10 avgout \n", totalout/count)
 
 
 def generate_stl10():
-    meanMax = 0.0
-    meanMin = 0.0
-    stdMax = 0.0
-    stdMin = 0.0
-    model.eval()
-    total = 0
-    count = 0
+    totalout = 0.0
+    count = 0.0
     for data, target in stl10_test_loader:
-        total += data.size(0)
         if args.cuda:
             data, target = data.cuda(), target.cuda()
         data, target = Variable(data), Variable(target)
-        out = data
-        mean =  torch.mean((model(out)) ** 2).data.item()
-        std = torch.std(model(out)**2).data.item()
-        meanMax = max(mean, meanMax)
-        meanMin = min(mean, meanMin)
-        stdMax = max(std, stdMax)
-        stdMin = min(std, stdMin)
-
-        count +=1
-
-    print("generated stl10 mean max", meanMax)
-    print("generated stl10 mean min", meanMin)
-    print("generated stl10 std max", stdMax)
-    print("generated stl10 std min", stdMin)
-
+        outloss = my_loss(model,data)
+        totalout += outloss
+        count += 1.0
+        #print("stl10 out \n", outloss)
+    print("avg stl10 out \n", totalout/count)
 
 def generate_mnist():
-    meanMax = 0.0
-    meanMin = 0.0
-    stdMax = 0.0
-    stdMin = 0.0
-    model.eval()
-    total = 0
-    count = 0
+    totalout = 0.0
+    count = 0.0
     for data, target in mnist_test_loader:
-        total += data.size(0)
         if args.cuda:
             data, target = data.cuda(), target.cuda()
         data, target = Variable(data), Variable(target)
-        out = data
-        mean =  torch.mean((model(out)) ** 2).data.item()
-        std = torch.std(model(out)**2).data.item()
-        meanMax = max(mean, meanMax)
-        meanMin = min(mean, meanMin)
-        stdMax = max(std, stdMax)
-        stdMin = min(std, stdMin)
-
-        count +=1
-
-    print("generated mnist mean max", meanMax)
-    print("generated mnist mean min", meanMin)
-    print("generated mnist std max", stdMax)
-    print("generated mnist std min", stdMin)
+        outloss = my_loss(model,data)
+        totalout += outloss
+        count += 1.0
+        #print("stl10 out \n", outloss)
+    print("avg mnist out \n", totalout/count)
 
 
 generate_cifar10()
 generate_svhn()
-generate_mnist()
 generate_stl10()
-generate_cifar10_classbased()
+generate_mnist()
+#generate_cifar10_classbased()
 
 #https://discuss.pytorch.org/t/output-from-hidden-layers/6325/2
