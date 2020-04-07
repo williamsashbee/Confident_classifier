@@ -66,8 +66,11 @@ model = Vgg13()
 model.load_state_dict(torch.load(args.pre_trained_net))
 print(model)
 
+cifar10_train_loader, cifar10_test_loader = data_loader.getTargetDataSet("cifar10", args.batch_size, args.imageSize, args.dataroot)
 
-cifar10_test_loader = data_loader.getNonTargetDataSet("cifar10", args.batch_size, args.imageSize, args.dataroot)
+#cifar10_train_loader = data_loader.getTargetDataSet("cifar10", args.batch_size, args.imageSize, args.dataroot)
+
+#cifar10_test_loader = data_loader.getNonTargetDataSet("cifar10", args.batch_size, args.imageSize, args.dataroot)
 
 svhn_test_loader = data_loader.getNonTargetDataSet("svhn", args.batch_size, args.imageSize, args.dataroot)
 
@@ -112,91 +115,113 @@ def generate_svhn():
         #print("svhn out \n", outloss)
     print("svhn out \n", totalout / count)
 
-def generate_cifar10_classbased():
-    meanMax = 0.0
-    meanMin = 0.0
-    stdMax = 0.0
-    stdMin = 0.0
-    model.eval()
-    total = 0
-    count = 0
-
-    for data, target in cifar10_test_loader:
-        total += data.size(0)
-        if args.cuda:
-            data, target = data.cuda(), target.cuda()
-        data, target = Variable(data), Variable(target)
-        sumin = torch.mean(model(data[target == 0]) ** 2,(1,2,3))
-        sumout = torch.mean(model(data[target != 0]) ** 2,(1,2,3))
-
-        print (sumin,sumout)
-        break
-
 
 def my_loss(D, x):
     l, out = D(x)
     total = 0.0
     loss = Variable(torch.zeros(x.shape[0],).cuda())
     loss = None
+    for a in l:
+        if loss == None:
+            loss = torch.mean(torch.sum(a**2, dim = (1,2,3)))
+        else:
+            loss += torch.mean(torch.sum(a**2, dim = (1,2,3)))
+
+    return loss
+
+def my_losses(D, x):
+    l, out = D(x)
+    total = 0.0
+    loss = Variable(torch.zeros(x.shape[0],).cuda())
+    loss = None
+    a = []
     for el in l:
         if loss == None:
-            loss = el.norm(2)
-        else:
-            loss += el.norm(2)
+            a+= torch.sum(
+                    el**2,
+                    dim = (1,2,3)
+                ).tolist()
 
-    return torch.mean(loss/el.numel()).data.item()
 
+    return a
 
-def generate_cifar10():
-    totalin = 0.0
-    totalout = 0.0
-    count = 0.0
-    for data, target in cifar10_test_loader:
+def plot(input, title):
+    # Import the libraries
+    import matplotlib.pyplot as plt
+    #import seaborn as sns
+    #input =  [21,22,23,4,5,6,77,8,9,10,31,32,33,34,35,36,37,18,49,50,100]
+    num_bins = 40
+    # matplotlib histogram
+    n,bins, patches = plt.hist(input, num_bins, facecolor='blue', alpha = 0.5)
+    plt.title( title )
+
+    plt.show()
+
+def getCifar10InOutValues():
+    il = []
+    ol = []
+
+    for data, target in cifar10_train_loader:
         if args.cuda:
             data, target = data.cuda(), target.cuda()
         data, target = Variable(data), Variable(target)
-        inloss = my_loss(model, data[target == 0])
-        outloss = my_loss(model,data[target == 1])
-        totalin += inloss
-        totalout += outloss
-        count += 1.0
-        print("cifar 10 in \n", inloss)
-        print("cifar 10 out \n", outloss)
-    print("cifar 10 avgin \n", totalin/count)
-    print("cifar 10 avgout \n", totalout/count)
+        inloss = my_losses(model, data[target == 0])
+        il += inloss
+        outloss = my_losses(model,data[target != 0])
+        ol += outloss
+
+    return il,ol
+
+def getSVHNValues():
+    ol = []
+
+    for data, target in svhn_test_loader:
+        if args.cuda:
+            data, target = data.cuda(), target.cuda()
+        data, target = Variable(data), Variable(target)
+        outloss = my_losses(model,data)
+        ol += outloss
+
+    return ol
 
 
-def generate_stl10():
-    totalout = 0.0
-    count = 0.0
+def getStl10Values():
+    ol = []
+
     for data, target in stl10_test_loader:
         if args.cuda:
             data, target = data.cuda(), target.cuda()
         data, target = Variable(data), Variable(target)
-        outloss = my_loss(model,data)
-        totalout += outloss
-        count += 1.0
-        #print("stl10 out \n", outloss)
-    print("avg stl10 out \n", totalout/count)
+        outloss = my_losses(model,data)
+        ol += outloss
 
-def generate_mnist():
-    totalout = 0.0
-    count = 0.0
+    return ol
+
+
+def getMnistValues():
+    ol = []
+
     for data, target in mnist_test_loader:
         if args.cuda:
             data, target = data.cuda(), target.cuda()
         data, target = Variable(data), Variable(target)
-        outloss = my_loss(model,data)
-        totalout += outloss
-        count += 1.0
-        #print("stl10 out \n", outloss)
-    print("avg mnist out \n", totalout/count)
+        outloss = my_losses(model,data)
+        ol += outloss
+
+    return ol
 
 
-generate_cifar10()
-generate_svhn()
-generate_stl10()
-generate_mnist()
-#generate_cifar10_classbased()
 
+i, o = getCifar10InOutValues()
+plot(i, 'cifar10 class 0 ')
+plot(o, 'cifar10 class != 0 ')
+
+o = getSVHNValues()
+plot(o, 'svhn values')
+
+o = getStl10Values()
+plot(o, 'stl10 values')
+
+o = getMnistValues()
+plot(o, 'mnist values')
 #https://discuss.pytorch.org/t/output-from-hidden-layers/6325/2
