@@ -99,40 +99,41 @@ decreasing_lr = list(map(int, args.decreasing_lr.split(',')))
 global lam
 lam = 1.0
 
-
+#https://stackoverflow.com/questions/44641976/in-pytorch-how-to-add-l1-regularizer-to-activations
 def my_loss(D, x , target, invalue):
     global lam
     lin, outin = D(x[target==invalue])
     lossin = None
-    for a in lin:
+    """for a in lin:
         if lossin == None:
             lossin = torch.mean(torch.sum( a**2, dim = (1,2,3)))
         else:
             lossin += torch.mean(torch.sum( a**2, dim = (1,2,3)))
-
-    lout, outout = D(x[target != invalue])
+    """
+    all_linear1_params = torch.cat([x.view(-1) for x in lin])
+    lossin = torch.mean(all_linear1_params ** 2)
+    """lout, outout = D(x[target != invalue])
     lossout = None
     for a in lout:
         if lossout == None:
             lossout = torch.mean(torch.sum( a**2, dim = (1,2,3)))
         else:
             lossout += torch.mean(torch.sum( a**2, dim = (1,2,3)))
+    """
     term1 = -lossin#/lin[0].shape[0]
-    term2 = lossout#/lout[0].shape[0]
-    """
-    l2_reg = None
-    for W in D.parameters(): #https://discuss.pytorch.org/t/how-does-one-implement-weight-regularization-l1-or-l2-manually-without-optimum/7951/5
-        if l2_reg is None:
-            l2_reg = W.norm(2)
-        else:
-            l2_reg = l2_reg + W.norm(2)
+    #term2 = lossout#/lout[0].shape[0]
 
-    if term1 < -1000:
-        lam *= 10.0
-    else:
-        lam *= .1
-    """
-    return term1 + 3.0*term2 #+ lam * l2_reg
+
+    all_linear1_params = torch.cat([x.view(-1) for x in D.parameters()])
+    l1_reg = torch.norm(all_linear1_params, 1)
+
+    #if term1 < -1000:
+    #    lam *= 10.0
+    #else:
+    #    lam *= .1
+    lam = torch.abs(term1).data.item()*.1
+#    return term1 #+ .5*term2 #+ lam * l2_reg
+    return term1 + lam * l1_reg
 
 def train(epoch):
     D.train()

@@ -161,7 +161,7 @@ def getCifar10InOutValues():
     il = []
     ol = []
 
-    for data, target in cifar10_train_loader:
+    for data, target in cifar10_test_loader:
         if args.cuda:
             data, target = data.cuda(), target.cuda()
         data, target = Variable(data), Variable(target)
