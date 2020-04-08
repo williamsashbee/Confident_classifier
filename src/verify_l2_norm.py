@@ -47,24 +47,8 @@ kwargs = {'num_workers': 1, 'pin_memory': True} if args.cuda else {}
 
 print('Load model')
 
-class Vgg13(torch.nn.Module):
-    def __init__(self):
-        super(Vgg13, self).__init__()
-        self.model = models.vgg13()
-        self.features = nn.ModuleList(list(self.model.features)).eval()
 
-    def forward(self, data):
-        results = []
-        x = data
-        for ii, model in enumerate(self.features):
-            x = model(x)
-            if ii in {24}:
-                results.append(x)
-
-        return results, self.model(data)
-
-
-model = Vgg13()
+model = models.vgg13()
 model.load_state_dict(torch.load(args.pre_trained_net))
 print(model)
 
@@ -132,7 +116,8 @@ def my_loss(D, x):
     return loss
 
 def my_losses(D, x):
-    l, out = D(x)
+    out = D(x,True)
+    l = D.results
     total = 0.0
     loss = Variable(torch.zeros(x.shape[0],).cuda())
     loss = None

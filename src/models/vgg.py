@@ -10,6 +10,7 @@ class VGG(nn.Module):
 
     def __init__(self, features, num_classes=10):
         super(VGG, self).__init__()
+        self.results =  None
         self.features = features
         self.classifier = nn.Sequential(
             nn.Linear(512, 512),
@@ -22,7 +23,15 @@ class VGG(nn.Module):
         )
         self._initialize_weights()
 
-    def forward(self, x):
+    def forward(self, x, setresults=False):
+        data = x
+        if setresults:
+            self.results = []
+            for ii, model in enumerate(self.features):
+                x = model(x)
+                if ii in {24}:
+                    self.results.append(x)
+        x = data
         x = self.features(x)
         x = x.view(x.size(0), -1)
         x = self.classifier(x)
@@ -69,3 +78,5 @@ def vgg13(pretrained=False, **kwargs):
     """
     model = VGG(make_layers(cfg['B']), **kwargs)
     return model
+
+

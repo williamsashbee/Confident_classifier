@@ -114,6 +114,8 @@ def my_loss(D, x , target, invalue):
     lam = torch.abs(term1).data.item()*.1
     return term1 + lam * l1_reg
 
+
+criterion = nn.CrossEntropyLoss()
 def train(epoch):
     D.train()
 
@@ -132,7 +134,11 @@ def train(epoch):
         D_optimizer.zero_grad()
         x = data
 
-        errD_real = my_loss(D,x,target, invalue=0)
+        #errD_real = my_loss(D,x,target, invalue=0)
+        out = D(data)
+        output = F.log_softmax(out)
+        errD_real = F.nll_loss(output, target.type(torch.cuda.LongTensor).reshape((target.shape[0],)))
+        #errD_real = criterion(D(x),target)
         errD_real.retain_grad()
         errD_real.backward()
         D_optimizer.step()
@@ -147,28 +153,13 @@ def train(epoch):
     return
 
 
-class Vgg13(torch.nn.Module):
-    def __init__(self):
-        super(Vgg13, self).__init__()
-        features = list(models.vgg13().features)
-        self.features = nn.ModuleList(features).eval()
-
-    def forward(self, x):
-        results = []
-        for ii, model in enumerate(self.features):
-            x = model(x)
-            if ii in {24}:
-                results.append(x)
-        return results, x
-
-
 global D
 global D_optimizer
 
 
 while True:
     #new_classifier = nn.Sequential(*list(model.classifier.children())[:-1])https://discuss.pytorch.org/t/how-to-extract-features-of-an-image-from-a-trained-model/119/3
-    D = Vgg13()   # ngpu, nc, ndf
+    D = models.vgg13()   # ngpu, nc, ndf
 
     if args.cuda:
         D.cuda()
