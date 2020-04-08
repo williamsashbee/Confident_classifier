@@ -50,16 +50,18 @@ print('Load model')
 class Vgg13(torch.nn.Module):
     def __init__(self):
         super(Vgg13, self).__init__()
-        features = list(models.vgg13().features)
-        self.features = nn.ModuleList(features).eval()
+        self.model = models.vgg13()
+        self.features = nn.ModuleList(list(self.model.features)).eval()
 
-    def forward(self, x):
+    def forward(self, data):
         results = []
+        x = data
         for ii, model in enumerate(self.features):
             x = model(x)
             if ii in {24}:
                 results.append(x)
-        return results, x
+
+        return results, self.model(data)
 
 
 model = Vgg13()
@@ -157,6 +159,14 @@ def plot(input, title):
 
     plt.show()
 
+
+def evaluateWeights(D = None):
+    all_linear1_params = torch.cat([x.view(-1) for x in D.parameters()])
+    norm = torch.norm(all_linear1_params, 2)
+    print("l2 norm of weights", norm)
+    plot(all_linear1_params.tolist(),"weights")
+
+
 def getCifar10InOutValues():
     il = []
     ol = []
@@ -171,6 +181,7 @@ def getCifar10InOutValues():
         ol += outloss
 
     return il,ol
+
 
 def getSVHNValues():
     ol = []
@@ -211,6 +222,7 @@ def getMnistValues():
     return ol
 
 
+evaluateWeights(model)
 
 i, o = getCifar10InOutValues()
 plot(i, 'cifar10 class 0 ')
@@ -225,3 +237,5 @@ plot(o, 'stl10 values')
 o = getMnistValues()
 plot(o, 'mnist values')
 #https://discuss.pytorch.org/t/output-from-hidden-layers/6325/2
+
+
