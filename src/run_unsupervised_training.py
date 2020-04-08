@@ -102,43 +102,20 @@ lam = 1.0
 #https://stackoverflow.com/questions/44641976/in-pytorch-how-to-add-l1-regularizer-to-activations
 def my_loss(D, x , target, invalue):
     global lam
-    lin, outin = D(x[target==invalue])
-    lossin = None
-    """for a in lin:
-        if lossin == None:
-            lossin = torch.mean(torch.sum( a**2, dim = (1,2,3)))
-        else:
-            lossin += torch.mean(torch.sum( a**2, dim = (1,2,3)))
-    """
+    lin, outin = D(x)
     all_linear1_params = torch.cat([x.view(-1) for x in lin])
     lossin = torch.mean(all_linear1_params ** 2)
-    """lout, outout = D(x[target != invalue])
-    lossout = None
-    for a in lout:
-        if lossout == None:
-            lossout = torch.mean(torch.sum( a**2, dim = (1,2,3)))
-        else:
-            lossout += torch.mean(torch.sum( a**2, dim = (1,2,3)))
-    """
-    term1 = -lossin#/lin[0].shape[0]
-    #term2 = lossout#/lout[0].shape[0]
+    term1 = -lossin
 
-
-    all_linear1_params = torch.cat([x.view(-1) for x in D.parameters()])
+    all_linear1_params = [x for x in D.parameters()]
+    all_linear1_params = all_linear1_params[-2]
     l1_reg = torch.norm(all_linear1_params, 1)
 
-    #if term1 < -1000:
-    #    lam *= 10.0
-    #else:
-    #    lam *= .1
     lam = torch.abs(term1).data.item()*.1
-#    return term1 #+ .5*term2 #+ lam * l2_reg
     return term1 + lam * l1_reg
 
 def train(epoch):
     D.train()
-    returnLoss = 0.0
-    returnKL = 0.0
 
     for batch_idx, (data, target) in enumerate(train_loader):
 
@@ -153,11 +130,8 @@ def train(epoch):
         ###########################
         # train with real
         D_optimizer.zero_grad()
-        #x = torch.randn(128, 3,32,32).cuda()
         x = data
 
-        if x[target == 0].shape[0] ==0:
-            continue
         errD_real = my_loss(D,x,target, invalue=0)
         errD_real.retain_grad()
         errD_real.backward()
@@ -171,30 +145,6 @@ def train(epoch):
             #print('sum',torch.sum(D))
 
     return
-
-"""
-def test(epoch):
-    netD.eval()
-    test_loss = 0
-    correct = 0
-    total = 0
-    for data, target in test_loader:
-        total += data.size(0)
-        if args.cuda:
-            data, target = data.cuda(), target.cuda()
-        data, target = Variable(data, volatile=True), Variable(target)
-        output = F.log_softmax(netD(data))
-        test_loss += F.nll_loss(output, target.type(torch.cuda.LongTensor).reshape((target.shape[0],))).data.item()
-        pred = output.data.max(1)[1]  # get the index of the max log-probability
-        correct += pred.eq(target.type(torch.cuda.LongTensor).reshape((target.shape[0],)).data).cpu().sum()
-
-    test_loss = test_loss
-    test_loss /= len(test_loader)  # loss function already averages over batch size
-    print('\nTest set: Average loss: {:.4f}, Accuracy: {}/{} ({:.0f}%)\n'.format(
-        test_loss, correct, total,
-        100. * correct / total))
-
-"""
 
 
 class Vgg13(torch.nn.Module):
