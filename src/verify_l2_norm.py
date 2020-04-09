@@ -103,36 +103,27 @@ def generate_svhn():
 
 
 def my_loss(D, x):
-    l, out = D(x)
+    out, features = D(x)
     total = 0.0
-    loss = Variable(torch.zeros(x.shape[0],).cuda())
     loss = None
-    for a in l:
-        if loss == None:
-            loss = torch.mean(torch.sum(a**2, dim = (1,2,3)))
-        else:
-            loss += torch.mean(torch.sum(a**2, dim = (1,2,3)))
-
+    if loss == None:
+        loss = torch.sum(features**2, dim = (1,2,3))
+    else:
+        loss += torch.sum(features**2, dim = (1,2,3))
     return loss
 
 def my_losses(D, x):
-    out = D(x,True)
-    l = D.results
-    total = 0.0
-    loss = Variable(torch.zeros(x.shape[0],).cuda())
-    loss = None
-    a = []
-    for el in l:
-        if loss == None:
-            a+= torch.sum(
-                    el**2,
-                    dim = (1,2,3)
-                ).tolist()
 
+    out, features = D(x,False)
 
+    a = torch.mean(
+            features**2,
+            dim = (1,2,3)
+        ).tolist()
+    assert len(a) == x.shape[0]
     return a
 
-def plot(input, title):
+def plot(input, title, median):
     # Import the libraries
     import matplotlib.pyplot as plt
     #import seaborn as sns
@@ -140,8 +131,8 @@ def plot(input, title):
     num_bins = 40
     # matplotlib histogram
     n,bins, patches = plt.hist(input, num_bins, facecolor='blue', alpha = 0.5)
-    plt.title( title )
 
+    plt.title( title + "\n" + str(median) )
     plt.show()
 
 
@@ -149,78 +140,73 @@ def evaluateWeights(D = None):
     all_linear1_params = torch.cat([x.view(-1) for x in D.parameters()])
     norm = torch.norm(all_linear1_params, 2)
     print("l2 norm of weights", norm)
-    plot(all_linear1_params.tolist(),"weights")
+    plot(all_linear1_params.tolist(),"weights", torch.median(all_linear1_params).data.item())
 
 
-def getCifar10InOutValues():
-    il = []
-    ol = []
-
+def getCifar10():
+    l = []
     for data, target in cifar10_test_loader:
         if args.cuda:
             data, target = data.cuda(), target.cuda()
         data, target = Variable(data), Variable(target)
-        inloss = my_losses(model, data[target == 0])
-        il += inloss
-        outloss = my_losses(model,data[target != 0])
-        ol += outloss
+        inloss = my_losses(model, data)
+        l += inloss
 
-    return il,ol
+    return l, torch.median(torch.FloatTensor(l)).data.item()
 
 
 def getSVHNValues():
-    ol = []
+    l = []
 
     for data, target in svhn_test_loader:
         if args.cuda:
             data, target = data.cuda(), target.cuda()
         data, target = Variable(data), Variable(target)
         outloss = my_losses(model,data)
-        ol += outloss
+        l += outloss
 
-    return ol
+    return l, torch.median(torch.FloatTensor(l)).data.item()
 
 
 def getStl10Values():
-    ol = []
+    l = []
 
     for data, target in stl10_test_loader:
         if args.cuda:
             data, target = data.cuda(), target.cuda()
         data, target = Variable(data), Variable(target)
         outloss = my_losses(model,data)
-        ol += outloss
+        l += outloss
 
-    return ol
+    return l, torch.median(torch.FloatTensor(l)).data.item()
 
 
 def getMnistValues():
-    ol = []
+    l = []
 
     for data, target in mnist_test_loader:
         if args.cuda:
             data, target = data.cuda(), target.cuda()
         data, target = Variable(data), Variable(target)
         outloss = my_losses(model,data)
-        ol += outloss
+        l += outloss
 
-    return ol
+    return l, torch.median(torch.FloatTensor(l)).data.item()
 
 
 evaluateWeights(model)
 
-i, o = getCifar10InOutValues()
-plot(i, 'cifar10 class 0 ')
-plot(o, 'cifar10 class != 0 ')
+l, median = getCifar10()
+plot(l, 'cifar10 norms per input', median)
 
-o = getSVHNValues()
-plot(o, 'svhn values')
+l, median = getSVHNValues()
+plot(l, 'svhn norms per input', median)
 
-o = getStl10Values()
-plot(o, 'stl10 values')
+l, median = getStl10Values()
+plot(l, 'stl10 norms per input', median)
 
-o = getMnistValues()
-plot(o, 'mnist values')
+l, median = getMnistValues()
+plot(l, 'mnist norms per input', median)
 #https://discuss.pytorch.org/t/output-from-hidden-layers/6325/2
 
 

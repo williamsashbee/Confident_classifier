@@ -88,34 +88,21 @@ else:
 print('Setup optimizer')
 decreasing_lr = list(map(int, args.decreasing_lr.split(',')))
 
-#def customized_loss(X):
-#    norm = torch.norm(X,p=2,dim=0)
-#    loss = torch.sum(Variable(norm, requires_grad = True))/X.shape[0]
-#    return Variable(loss, requires_grad = True)
-
-
 #https://discuss.pytorch.org/t/custom-loss-functions/29387
 #https://stackoverflow.com/questions/42704283/adding-l1-l2-regularization-in-pytorch
 global lam
 lam = 1.0
 
 #https://stackoverflow.com/questions/44641976/in-pytorch-how-to-add-l1-regularizer-to-activations
-def my_loss(D, x , target, invalue):
+def my_loss(features):
     global lam
-    lin, outin = D(x)
-    all_linear1_params = torch.cat([x.view(-1) for x in lin])
+    all_linear1_params = torch.cat([x.view(-1) for x in features])
     lossin = torch.mean(all_linear1_params ** 2)
     term1 = -lossin
 
-    all_linear1_params = [x for x in D.parameters()]
-    all_linear1_params = all_linear1_params[-2]
-    l1_reg = torch.norm(all_linear1_params, 1)
-
-    lam = torch.abs(term1).data.item()*.1
-    return term1 + lam * l1_reg
+    return term1 #+ lam * l1_reg
 
 
-criterion = nn.CrossEntropyLoss()
 def train(epoch):
     D.train()
 
@@ -135,10 +122,10 @@ def train(epoch):
         x = data
 
         #errD_real = my_loss(D,x,target, invalue=0)
-        out = D(data)
-        output = F.log_softmax(out)
-        errD_real = F.nll_loss(output, target.type(torch.cuda.LongTensor).reshape((target.shape[0],)))
-        #errD_real = criterion(D(x),target)
+        out, features = D(data, False)
+        #output = F.log_softmax(out)
+        #errD_real = F.nll_loss(output, target.type(torch.cuda.LongTensor).reshape((target.shape[0],)))
+        errD_real = my_loss(features)
         errD_real.retain_grad()
         errD_real.backward()
         D_optimizer.step()
@@ -160,7 +147,7 @@ global D_optimizer
 while True:
     #new_classifier = nn.Sequential(*list(model.classifier.children())[:-1])https://discuss.pytorch.org/t/how-to-extract-features-of-an-image-from-a-trained-model/119/3
     D = models.vgg13()   # ngpu, nc, ndf
-
+    print(D)
     if args.cuda:
         D.cuda()
     D_optimizer = optim.Adam(D.parameters(), lr=args.lr, betas=(0.5, 0.999))
@@ -175,8 +162,8 @@ while True:
             # do checkpointing
 
             torch.save(D.state_dict(),
-                       '%s/%s-%s_netD%03d.pth' % (
+                       '%s/%s-%s_netD%03d' % (
                            args.outf, "unsupervised_discriminator.pth", args.dataset, epoch))
-
+    break
 #https://pytorch.org/tutorials/beginner/transfer_learning_tutorial.html#sphx-glr-beginner-transfer-learning-tutorial-py
 #https://stackoverflow.com/questions/55083642/extract-features-from-last-hidden-layer-pytorch-resnet18

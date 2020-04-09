@@ -32,10 +32,11 @@ class VGG(nn.Module):
                 if ii in {24}:
                     self.results.append(x)
         x = data
-        x = self.features(x)
+        features = self.features(x)
+        x = features
         x = x.view(x.size(0), -1)
         x = self.classifier(x)
-        return x
+        return x, features
 
     def _initialize_weights(self):
         for m in self.modules():
