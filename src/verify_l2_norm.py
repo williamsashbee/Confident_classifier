@@ -130,17 +130,20 @@ def plot(input, title, median):
     #input =  [21,22,23,4,5,6,77,8,9,10,31,32,33,34,35,36,37,18,49,50,100]
     num_bins = 40
     # matplotlib histogram
-    n,bins, patches = plt.hist(input, num_bins, facecolor='blue', alpha = 0.5)
+    #n,bins, patches = plt.hist(input, num_bins, facecolor='blue', alpha = 0.5)
 
-    plt.title( title + "\n" + str(median) )
+    fig, (ax) = plt.subplots(1, 1, figsize=(8, 6))
+    ax.hist(input, num_bins, facecolor='blue', alpha=0.5)
+    ax.axvline(x=median, color='r', linestyle='dashed', linewidth=2)
+    plt.title( title + "\n\nmedian: " + str(median) )
     plt.show()
 
 
 def evaluateWeights(D = None):
     all_linear1_params = torch.cat([x.view(-1) for x in D.parameters()])
-    norm = torch.norm(all_linear1_params, 2)
+    norm = torch.mean(all_linear1_params**2)
     print("l2 norm of weights", norm)
-    plot(all_linear1_params.tolist(),"weights", torch.median(all_linear1_params).data.item())
+    plot(all_linear1_params.tolist(),"weights hist", torch.median(all_linear1_params).data.item())
 
 
 def getCifar10():
@@ -208,5 +211,4 @@ plot(l, 'stl10 norms per input', median)
 l, median = getMnistValues()
 plot(l, 'mnist norms per input', median)
 #https://discuss.pytorch.org/t/output-from-hidden-layers/6325/2
-
 

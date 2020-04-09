@@ -162,8 +162,8 @@ while True:
             # do checkpointing
 
             torch.save(D.state_dict(),
-                       '%s/%s-%s_netD%03d' % (
-                           args.outf, "unsupervised_discriminator.pth", args.dataset, epoch))
+                       '%s/%s-%s_netD%03d.pth' % (
+                           args.outf, "unsupervised_discriminator", args.dataset, epoch))
     break
 #https://pytorch.org/tutorials/beginner/transfer_learning_tutorial.html#sphx-glr-beginner-transfer-learning-tutorial-py
 #https://stackoverflow.com/questions/55083642/extract-features-from-last-hidden-layer-pytorch-resnet18
