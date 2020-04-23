@@ -6,7 +6,7 @@ from __future__ import print_function
 import os
 
 os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"  # see issue #152
-os.environ["CUDA_VISIBLE_DEVICES"] = "4"
+os.environ["CUDA_VISIBLE_DEVICES"] = "0"
 
 import argparse
 import torch
@@ -123,9 +123,9 @@ def train(epoch):
 
         #errD_real = my_loss(D,x,target, invalue=0)
         out, features = D(data, False)
-        #output = F.log_softmax(out)
-        #errD_real = F.nll_loss(output, target.type(torch.cuda.LongTensor).reshape((target.shape[0],)))
-        errD_real = my_loss(features)
+        output = F.log_softmax(out)
+        errD_real = F.nll_loss(output, target.type(torch.cuda.LongTensor).reshape((target.shape[0],)))
+        #errD_real = my_loss(features)
         errD_real.retain_grad()
         errD_real.backward()
         D_optimizer.step()
@@ -143,19 +143,41 @@ def train(epoch):
 global D
 global D_optimizer
 
+def test(epoch, model):
+    model.eval()
+    test_loss = 0
+    correct = 0
+    total = 0
+    for data, target in test_loader:
+        total += data.size(0)
+        if args.cuda:
+            data, target = data.cuda(), target.cuda()
+        data, target = Variable(data), Variable(target)
+        output = F.log_softmax(model(data)[0])
+        test_loss += F.nll_loss(output, target.type(torch.cuda.LongTensor).reshape((target.shape[0],))).data.item()
+        pred = output.data.max(1)[1]  # get the index of the max log-probability
+        correct += pred.eq(target.type(torch.cuda.LongTensor).reshape((target.shape[0],)).data).cpu().sum()
+
+    test_loss = test_loss
+    test_loss /= len(test_loader)  # loss function already averages over batch size
+    print('\nTest set: Average loss: {:.4f}, Accuracy: {}/{} ({:.0f}%)\n'.format(
+        test_loss, correct, total,
+        100. * correct / total))
+
 
 while True:
     #new_classifier = nn.Sequential(*list(model.classifier.children())[:-1])https://discuss.pytorch.org/t/how-to-extract-features-of-an-image-from-a-trained-model/119/3
     D = models.vgg13()   # ngpu, nc, ndf
+    D.freeze_layer()
     print(D)
     if args.cuda:
         D.cuda()
-    D_optimizer = optim.Adam(D.parameters(), lr=args.lr, betas=(0.5, 0.999))
+    D_optimizer = optim.Adam(filter(lambda p: p.requires_grad, D.parameters()), lr=args.lr, betas=(0.5, 0.999))
 
     for epoch in range(1, args.epochs + 1):
         train(epoch)
 
-#        test(epoch)
+        test(epoch, D)
         if epoch in decreasing_lr:
             D_optimizer.param_groups[0]['lr'] *= args.droprate
         if epoch % 5 == 0:
